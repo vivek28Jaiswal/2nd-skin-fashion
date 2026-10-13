@@ -28,7 +28,7 @@ export class PointMass3D {
     this.pinned = false
   }
 
-  update(dt, damping, grav, extForceX, extForceY, extForceZ, mouseHit, mouseDelta, mouseStrength, interactDist) {
+  update(dt, damping, grav, extForceX, extForceY, extForceZ, mouseHit, mouseDelta, mouseStrength, interactDist, allowMouse = true) {
     if (this.pinned) {
       this.x = this.origX
       this.y = this.origY
@@ -39,11 +39,17 @@ export class PointMass3D {
       return
     }
 
+    // Elastic spring restoring force towards original draped rest pose (prevents endless sagging/stretching)
+    const restSpringK = 18.0
+    const springFx = (this.origX - this.x) * restSpringK
+    const springFy = (this.origY - this.y) * restSpringK
+    const springFz = (this.origZ - this.z) * restSpringK
+
     // Interactive mouse tugging (matching user reference implementation)
     let dmx = 0
     let dmy = 0
     let dmz = 0
-    if (mouseHit && mouseDelta) {
+    if (allowMouse && mouseHit && mouseDelta) {
       const dx = this.x - mouseHit.x
       const dy = this.y - mouseHit.y
       const dz = this.z - mouseHit.z
@@ -56,10 +62,10 @@ export class PointMass3D {
       }
     }
 
-    // Standard Verlet velocity integration
-    const vx = (this.x - this.lastX) * damping + extForceX * dt * dt + dmx
-    const vy = (this.y - this.lastY) * damping + (grav + extForceY) * dt * dt + dmy
-    const vz = (this.z - this.lastZ) * damping + extForceZ * dt * dt + dmz
+    // Standard Verlet velocity integration with elastic spring restoration
+    const vx = (this.x - this.lastX) * damping + (extForceX + springFx) * dt * dt + dmx
+    const vy = (this.y - this.lastY) * damping + (grav + extForceY + springFy) * dt * dt + dmy
+    const vz = (this.z - this.lastZ) * damping + (extForceZ + springFz) * dt * dt + dmz
 
     this.lastX = this.x
     this.lastY = this.y
@@ -120,7 +126,7 @@ export class VerletClothSystem {
 
     // Fabric physical parameters
     this.damping = isTee ? 0.982 : 0.975 // Cotton light damping vs denim heavy damping
-    this.gravity = -24.0                // Downward gravitational acceleration
+    this.gravity = 0.0                  // Garments are already naturally draped at rest; spring restoration maintains shape cleanly
     this.solves = 3                     // Number of constraint relaxation passes per frame
     this.interactDist = 18.0            // Mouse interaction distance
     this.mouseStrength = 22.0           // Mouse tugging force
@@ -157,7 +163,9 @@ export class VerletClothSystem {
     // 1. Generate particle lattice across garment bounds
     for (let y = 0; y < this.gridH; y++) {
       const v = y / (this.gridH - 1) // 0 at top hanger, 1 at bottom hem
-      const py = maxY - v * height
+      // For T-shirt: maxY is top shoulders, minY is bottom hem
+      // For Pants: minY is top hanger fold, maxY is bottom hem
+      const py = this.isTee ? (maxY - v * height) : (minY + v * height)
 
       for (let x = 0; x < this.gridW; x++) {
         const u = x / (this.gridW - 1) // 0 at left, 1 at right
@@ -166,7 +174,7 @@ export class VerletClothSystem {
 
         const point = new PointMass3D(px, py, pz)
 
-        // Top edge (y === 0) attached to hanger
+        // Top edge attached to hanger
         if (y === 0) {
           if (this.isTee) {
             // T-shirt shoulder hanger support: pin center shoulder region, allow sleeve ends to droop
@@ -177,6 +185,9 @@ export class VerletClothSystem {
             // Trouser waistband / fold bar: pin across the bar
             point.pin()
           }
+        } else if (!this.isTee && y === 1) {
+          // Extra lock for pants hanger wire bar: pin row 1 as well to guarantee zero detachment
+          point.pin()
         }
 
         this.points.push(point)
@@ -230,26 +241,33 @@ export class VerletClothSystem {
     const airDragFactor = this.isTee ? 0.08 : 0.04
 
     // 1. Particle mass update
-    for (let i = 0; i < this.points.length; i++) {
-      const p = this.points[i]
-      if (p.pinned) continue
+    for (let y = 0; y < this.gridH; y++) {
+      for (let x = 0; x < this.gridW; x++) {
+        const i = y * this.gridW + x
+        const p = this.points[i]
+        if (p.pinned) continue
 
-      // Air resistance
-      const vz = p.z - p.lastZ
-      const airDragZ = -vz * airDragFactor * 60.0
+        // Air resistance
+        const vz = p.z - p.lastZ
+        const airDragZ = -vz * airDragFactor * 60.0
 
-      p.update(
-        dt,
-        this.damping,
-        this.gravity,
-        0,                 // extForceX
-        0,                 // extForceY
-        rackInertiaZ + airDragZ, // extForceZ
-        mouseHit,
-        mouseDelta,
-        this.mouseStrength,
-        this.interactDist
-      )
+        // Disallow mouse tugging near top hanger fold for trousers (y <= 2)
+        const allowMouse = this.isTee || y > 2
+
+        p.update(
+          dt,
+          this.damping,
+          this.gravity,
+          0,                 // extForceX
+          0,                 // extForceY
+          rackInertiaZ + airDragZ, // extForceZ
+          mouseHit,
+          mouseDelta,
+          this.mouseStrength,
+          this.interactDist,
+          allowMouse
+        )
+      }
     }
 
     // 2. Iterative constraint relaxation solving (SOLVES = 3)

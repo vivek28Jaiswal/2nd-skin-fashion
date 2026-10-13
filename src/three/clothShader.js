@@ -36,12 +36,19 @@ export const applyClothShader = (material, isTee, bounds, paramsUniform, verletT
       // Normalized coordinates across the garment geometry
       float clothH = max(1.0, uClothBounds.y - uClothBounds.x);
       float clothW = max(1.0, uClothBounds.w - uClothBounds.z);
-      float normY = clamp((uClothBounds.y - position.y) / clothH, 0.0, 1.0); // 0 at hanger, 1 at bottom hem
+      // For T-shirt: uClothBounds.y (max.y) is hanger shoulders, uClothBounds.x (min.y) is hem
+      // For Pants: uClothBounds.x (min.y) is hanger fold, uClothBounds.y (max.y) is bottom hem
+      float normY = uGarmentType < 1.5
+        ? clamp((uClothBounds.y - position.y) / clothH, 0.0, 1.0)
+        : clamp((position.y - uClothBounds.x) / clothH, 0.0, 1.0);
       float normX = clamp((position.x - uClothBounds.z) / clothW, 0.0, 1.0); // 0 at left, 1 at right
       float centerDistX = (normX - 0.5) * 2.0; // -1.0 to +1.0 from garment center line
 
       // Progressive anchor weight: firmly attached at hanger, free towards body and hem
-      float anchorWeight = smoothstep(0.03, 0.16, normY);
+      // For pants, the hanger crossbar fold (top 15%) is strictly clamped to 0.0 so it never lifts off the hanger
+      float anchorWeight = uGarmentType < 1.5
+        ? smoothstep(0.03, 0.16, normY)
+        : smoothstep(0.14, 0.30, normY);
       float hemWeight = pow(normY, 1.5);
 
       // ========================================================
@@ -92,16 +99,16 @@ export const applyClothShader = (material, isTee, bounds, paramsUniform, verletT
 
         // A. Hanger crossbar fold & thick denim waistband volume
         float barVolume = sin(normY * 13.0) * exp(-normY * 7.5) * 1.35;
-        float waistbandThickness = sin(clamp(normX * 3.1415, 0.0, 3.1415)) * 1.75 * smoothstep(0.03, 0.20, normY);
+        float waistbandThickness = sin(clamp(normX * 3.1415, 0.0, 3.1415)) * 1.75 * smoothstep(0.14, 0.35, normY);
 
         // B. Clear 3D leg separation & inward crotch seam indentation
-        float crotchDivision = (1.0 - smoothstep(0.0, 0.13, abs(centerDistX))) * smoothstep(0.20, 0.95, normY) * -1.85;
+        float crotchDivision = (1.0 - smoothstep(0.0, 0.13, abs(centerDistX))) * smoothstep(0.25, 0.95, normY) * -1.85;
 
         // C. Heavy vertical fluting columns down each pant leg
         float legFluting = (sin(centerDistX * 12.5) * 1.05 + cos(centerDistX * 22.0) * 0.50) * pow(normY, 1.15) * 1.05;
 
         // D. Knee break crease and natural fabric bending
-        float kneeBreak = sin(normY * 5.0) * 0.50 * smoothstep(0.26, 0.72, normY);
+        float kneeBreak = sin(normY * 5.0) * 0.50 * smoothstep(0.35, 0.75, normY);
 
         // E. Bottom cuff flare and roping break
         float cuffBreak = sin(centerDistX * 9.0) * 0.55 * pow(normY, 2.3);

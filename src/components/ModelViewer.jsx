@@ -115,6 +115,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
     let currentHoveredGarment = null
     let activeMouseHit = null
     let activeMouseDelta = null
+    let activeHitWorldPoint = null
     let prevMouseHit = null
     let activeHitGarment = null
 
@@ -395,6 +396,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
         activeMouseHit = null
         activeMouseDelta = null
         activeHitGarment = null
+        activeHitWorldPoint = null
 
         if (hits.length > 0) {
           for (let h = 0; h < Math.min(3, hits.length); h++) {
@@ -405,6 +407,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
               if (name) {
                 foundGarment = name
                 activeHitGarment = obj
+                activeHitWorldPoint = hit.point.clone()
 
                 // Compute local coordinates on garment for Verlet point mass tugging
                 const localPoint = obj.worldToLocal(hit.point.clone())
@@ -423,6 +426,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
 
         if (!foundGarment) {
           prevMouseHit = null
+          activeHitWorldPoint = null
         }
 
         if (foundGarment !== currentHoveredGarment) {
@@ -444,6 +448,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
       activeMouseHit = null
       activeMouseDelta = null
       activeHitGarment = null
+      activeHitWorldPoint = null
 
       raycaster.setFromCamera(mouse, camera)
       const hits = raycaster.intersectObjects(interactiveObjects, true)
@@ -455,6 +460,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
       activeMouseHit = null
       activeMouseDelta = null
       activeHitGarment = null
+      activeHitWorldPoint = null
       if (currentHoveredGarment !== null) {
         currentHoveredGarment = null
         if (onHoverGarmentRef.current) {
@@ -670,14 +676,30 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
               activeHitGarment && (
                 g.group === activeHitGarment ||
                 g.clothMeshes?.includes(activeHitGarment) ||
-                g.group === activeHitGarment.parent
+                g.group === activeHitGarment.parent ||
+                g.group === activeHitGarment.parent?.parent
               )
             )
+
+            let mouseHit = null
+            let mouseDelta = null
+            if (isTarget && activeMouseHit && g.clothMeshes?.length > 0) {
+              const clothMesh = g.clothMeshes[0]
+              if (activeHitGarment === clothMesh) {
+                mouseHit = activeMouseHit
+                mouseDelta = activeMouseDelta
+              } else if (activeHitWorldPoint) {
+                // Convert world hit point into clothMesh local coordinates
+                mouseHit = clothMesh.worldToLocal(activeHitWorldPoint.clone())
+                mouseDelta = activeMouseDelta
+              }
+            }
+
             g.verletCloth.update(dt, {
               carouselVelY,
               carouselAccY,
-              mouseHit: isTarget ? activeMouseHit : null,
-              mouseDelta: isTarget ? activeMouseDelta : null,
+              mouseHit,
+              mouseDelta,
               isRackMoving,
             })
           }
