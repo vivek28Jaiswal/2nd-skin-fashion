@@ -10,10 +10,15 @@ import jeans1Img from '../assets/imgs/jeans1.png'
 import jeans2Img from '../assets/imgs/jeans2.png'
 import jeans3Img from '../assets/imgs/jeans3.png'
 
-export default function ModelViewer({ targetAngle }) {
+export default function ModelViewer({ targetAngle, onHoverGarment }) {
   const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const targetAngleRef = useRef(null)
+  const onHoverGarmentRef = useRef(onHoverGarment)
+
+  useEffect(() => {
+    onHoverGarmentRef.current = onHoverGarment
+  }, [onHoverGarment])
 
   useEffect(() => {
     if (targetAngle !== undefined && targetAngle !== null) {
@@ -825,6 +830,7 @@ export default function ModelViewer({ targetAngle }) {
     let prevCarouselRotY = 0
     let prevCarouselVelocityY = 0
     let lastTime = performance.now()
+    let currentHoveredGarment = null
 
     const carouselGroup = new THREE.Group()
     carouselGroup.name = 'rotating_carousel'
@@ -927,8 +933,32 @@ export default function ModelViewer({ targetAngle }) {
               child.material = hangerSilverMaterial
             } else if (isShirt) {
               child.material = getTeeMaterial(name, parentName).clone()
+              const id = `${name} ${parentName}`.toLowerCase()
+              let label = 'lucky boxy-fit t-shirt'
+              if (id.includes('052') || id.includes('048') || id.includes('044')) {
+                label = 'lucky boxy-fit t-shirt'
+              } else if (id.includes('051') || id.includes('047') || id.includes('043')) {
+                label = 'stüssy black classic crew'
+              } else if (id.includes('050') || id.includes('046') || id.includes('042')) {
+                label = 'blue graffiti streetwear tee'
+              } else {
+                label = 'y-3 graphic half-sleeve'
+              }
+              child.userData.garmentName = label
+              if (child.parent) child.parent.userData.garmentName = label
             } else if (isJeans) {
               child.material = getJeansMaterial(name, parentName).clone()
+              const id = `${name} ${parentName}`.toLowerCase()
+              let label = 'vintage wide-leg baggy denim'
+              if (id.includes('020') || id.includes('023') || id.includes('026')) {
+                label = 'vintage wide-leg baggy denim'
+              } else if (id.includes('021') || id.includes('024') || id.includes('027')) {
+                label = 'medium indigo stone-wash denim'
+              } else {
+                label = 'washed charcoal black denim'
+              }
+              child.userData.garmentName = label
+              if (child.parent) child.parent.userData.garmentName = label
             } else {
               child.material = child.material.clone()
               child.material.metalness = 0.0
@@ -1131,6 +1161,10 @@ export default function ModelViewer({ targetAngle }) {
       updateMouseCoords(e)
 
       if (isDragging) {
+        if (currentHoveredGarment !== null) {
+          currentHoveredGarment = null
+          if (onHoverGarmentRef.current) onHoverGarmentRef.current(null)
+        }
         if (e.buttons === 0) {
           isDragging = false
           dragMode = null
@@ -1145,13 +1179,34 @@ export default function ModelViewer({ targetAngle }) {
         carouselGroup.rotation.y += deltaX * speed
         spinVelocity = deltaX * speed
       } else {
-        // Hover state cursor detection
+        // Hover state cursor detection & garment raycasting (strictly front-facing clothes)
         raycaster.setFromCamera(mouse, camera)
         const hits = raycaster.intersectObjects(interactiveObjects, true)
+        let foundGarment = null
+
         if (hits.length > 0) {
-          container.style.cursor = 'grab'
-        } else {
-          container.style.cursor = 'default'
+          // Check top hits in front hemisphere of the circular rack
+          for (let h = 0; h < Math.min(3, hits.length); h++) {
+            const hit = hits[h]
+            if (hit.point.z > -10) {
+              const obj = hit.object
+              const name = obj.userData?.garmentName || obj.parent?.userData?.garmentName
+              if (name) {
+                foundGarment = name
+                break
+              }
+            }
+          }
+        }
+
+        if (foundGarment !== currentHoveredGarment) {
+          currentHoveredGarment = foundGarment
+          container.style.cursor = foundGarment ? 'pointer' : (hits.length > 0 ? 'grab' : 'default')
+          if (onHoverGarmentRef.current) {
+            onHoverGarmentRef.current(foundGarment)
+          }
+        } else if (!foundGarment) {
+          container.style.cursor = hits.length > 0 ? 'grab' : 'default'
         }
       }
     }
@@ -1166,11 +1221,21 @@ export default function ModelViewer({ targetAngle }) {
       container.style.cursor = hits.length > 0 ? 'grab' : 'default'
     }
 
+    const onPointerLeave = () => {
+      if (currentHoveredGarment !== null) {
+        currentHoveredGarment = null
+        if (onHoverGarmentRef.current) {
+          onHoverGarmentRef.current(null)
+        }
+      }
+    }
+
     // Touch & Mouse listeners on container and window
     container.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
     window.addEventListener('pointercancel', onPointerUp)
+    container.addEventListener('pointerleave', onPointerLeave)
 
     // Resize handler
     const handleResize = () => {
@@ -1353,6 +1418,7 @@ export default function ModelViewer({ targetAngle }) {
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
+      container.removeEventListener('pointerleave', onPointerLeave)
       window.removeEventListener('resize', handleResize)
       cancelAnimationFrame(animationFrameId)
       renderer.dispose()

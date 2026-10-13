@@ -8,31 +8,31 @@ import blackHalfSleeveImg from '../assets/imgs-transparent/black-halfsleeve.png'
 const PRODUCTS = [
   {
     id: 'blue-tshirt',
-    name: 'Blue Graffiti Streetwear Tee',
+    name: 'blue graffiti streetwear tee',
     img: blueTshirtImg,
     targetAngle: Math.PI * 0.45,
   },
   {
     id: 'black-sweatshirt',
-    name: 'Stüssy Black Classic Crew',
+    name: 'stüssy black classic crew',
     img: blackSweatshirtImg,
     targetAngle: Math.PI * 0.15,
   },
   {
     id: 'center-tshirt',
-    name: 'Stüssy Dover Street Market Orange Tee',
+    name: 'lucky boxy-fit t-shirt',
     img: centerTshirtImg,
     targetAngle: -Math.PI * 0.25,
   },
   {
     id: 'pants-jeans',
-    name: 'Vintage Wide-Leg Baggy Denim',
+    name: 'vintage wide-leg baggy denim',
     img: pantsJeansImg,
     targetAngle: -Math.PI * 0.70,
   },
   {
     id: 'black-halfsleeve',
-    name: 'Y-3 Yohji Yamamoto Graphic Half-Sleeve',
+    name: 'y-3 graphic half-sleeve',
     img: blackHalfSleeveImg,
     targetAngle: -Math.PI * 1.05,
   },
@@ -47,7 +47,7 @@ const ITEM_WIDTH = 68 // Spacing between product images
 const TICK_INTERVAL = 8.5
 const NUM_TICKS = 57 // Symmetric ticks from -28 to +28 (center is at index 28)
 
-export default function ProductDialer({ onSelectProduct, activeIndex: externalIndex }) {
+export default function ProductDialer({ onSelectProduct, activeIndex: externalIndex, onHoverProduct }) {
   // Continuous unbounded virtual position for seamless infinite loop (starts at 2 = Orange Tee)
   const [virtualPos, setVirtualPos] = useState(externalIndex !== undefined ? externalIndex : 2)
   const [dragOffset, setDragOffset] = useState(0)
@@ -209,6 +209,16 @@ export default function ProductDialer({ onSelectProduct, activeIndex: externalIn
               onClick={(e) => {
                 e.stopPropagation()
                 snapToSlot(slot)
+              }}
+              onPointerEnter={() => {
+                if (!isDragging && onHoverProduct) {
+                  onHoverProduct(prod.name)
+                }
+              }}
+              onPointerLeave={() => {
+                if (onHoverProduct) {
+                  onHoverProduct(null)
+                }
               }}
               style={{
                 position: 'absolute',
