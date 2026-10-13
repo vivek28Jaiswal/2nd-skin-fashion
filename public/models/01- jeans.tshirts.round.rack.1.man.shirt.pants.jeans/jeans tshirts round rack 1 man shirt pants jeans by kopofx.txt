@@ -1,0 +1,20 @@
+Title: jeans tshirts round rack 1 man shirt pants jeans
+URL: http://sketchfab.com/3d-models/jeans-tshirts-round-rack-1-man-shirt-pants-jeans-f9fb8c03d8404cb5965dbdfff70c33aa
+Author: https://sketchfab.com/kopofx
+
+Vertices: 356430
+Polygons: 702792
+Animations: 0
+
+Download Date: 12-10-2026
+Download Format: GLTF
+Download Path: C:\Code Now\tools\3d_Ripper_Pro_v109\Downloads\kopofx\01- jeans.tshirts.round.rack.1.man.shirt.pants.jeans\
+Download File: f9fb8c03d8404cb5965dbdfff70c33aa.gltf
+
+Textures: 6
+#1: 85691fa175e3440e92d3864ca35bc217__pack jeans tshirts rack redondo 1 6 423000 353000.jpeg
+#2: 9bd7837c48814b0fb60782191d2fbc63__pack jeans tshirts rack redondo 1 1.jpeg
+#3: d839265b80ab4ba98f5b0caa83b12c1b__pack jeans tshirts rack redondo 1 5.jpeg
+#4: 616acc38715e46babab9f963adaef9ea__pack jeans tshirts rack redondo 1 3.jpeg
+#5: dbc29317b4b44c56b9726d965f6e19e0__pack jeans tshirts rack redondo 1 4.jpeg
+#6: a01e6ef164494d5b9929dbb8dcbc6e4a__pack jeans tshirts rack redondo 1 2.jpeg
