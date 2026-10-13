@@ -10,9 +10,16 @@ import jeans1Img from '../assets/imgs/jeans1.png'
 import jeans2Img from '../assets/imgs/jeans2.png'
 import jeans3Img from '../assets/imgs/jeans3.png'
 
-export default function ModelViewer() {
+export default function ModelViewer({ targetAngle }) {
   const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
+  const targetAngleRef = useRef(null)
+
+  useEffect(() => {
+    if (targetAngle !== undefined && targetAngle !== null) {
+      targetAngleRef.current = targetAngle
+    }
+  }, [targetAngle])
 
   useEffect(() => {
     const container = containerRef.current
@@ -1124,6 +1131,11 @@ export default function ModelViewer() {
       updateMouseCoords(e)
 
       if (isDragging) {
+        if (e.buttons === 0) {
+          isDragging = false
+          dragMode = null
+          return
+        }
         const deltaX = e.clientX - lastPointerX
         lastPointerX = e.clientX
         lastPointerY = e.clientY
@@ -1173,6 +1185,7 @@ export default function ModelViewer() {
 
     // Physics-driven render loop (Inertia, Cloth Simulation, Collisions & Soft Shadows)
     let animationFrameId
+    let targetSpringVelocity = 0
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate)
 
@@ -1180,14 +1193,35 @@ export default function ModelViewer() {
       const dt = Math.min((currentTime - lastTime) / 1000, 0.04)
       lastTime = currentTime
 
-      // Natural rotational inertia and gradual ball-bearing friction deceleration
+      // Target alignment from ProductDialer or rotational inertia
       if (!isDragging) {
-        if (Math.abs(spinVelocity) > 0.00005) {
+        if (targetAngleRef.current !== null) {
+          const diff = targetAngleRef.current - carouselGroup.rotation.y
+          const wrappedDiff = Math.atan2(Math.sin(diff), Math.cos(diff))
+
+          // Subtle, minor jelly settle with firm stop
+          const springK = 38.0
+          const springDamp = 0.91
+          targetSpringVelocity = (targetSpringVelocity + wrappedDiff * springK * dt) * springDamp
+          carouselGroup.rotation.y += targetSpringVelocity * dt
+          spinVelocity = 0
+
+          if (Math.abs(wrappedDiff) < 0.002 && Math.abs(targetSpringVelocity) < 0.015) {
+            carouselGroup.rotation.y += wrappedDiff
+            targetAngleRef.current = null
+            targetSpringVelocity = 0
+            spinVelocity = 0
+          }
+        } else if (Math.abs(spinVelocity) > 0.00015) {
           carouselGroup.rotation.y += spinVelocity
-          spinVelocity *= 0.948 // Smooth physical bearing damping
+          // Smooth quick deceleration
+          spinVelocity *= 0.88
         } else {
           spinVelocity = 0
         }
+      } else {
+        targetAngleRef.current = null
+        targetSpringVelocity = 0
       }
 
       // Compute carousel rotational acceleration and velocity with physical hand-drag limits

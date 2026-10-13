@@ -1,10 +1,17 @@
-import sassyImg from './assets/imgs/sassy.png'
+import { useState } from 'react'
 import ModelViewer from './components/ModelViewer.jsx'
+import ProductDialer from './components/ProductDialer.jsx'
 
 export default function App() {
-  const equalizerBars = [
-    3, 5, 8, 4, 11, 15, 9, 14, 18, 12, 17, 13, 16, 10, 6, 8, 3,
-  ]
+  const [targetAngle, setTargetAngle] = useState(null)
+  const [activeIndex, setActiveIndex] = useState(2) // Default center: Orange Stüssy Tee
+
+  const handleSelectProduct = (index, product) => {
+    setActiveIndex(index)
+    if (product && product.targetAngle !== undefined) {
+      setTargetAngle(product.targetAngle)
+    }
+  }
 
   return (
     <div className="relative h-screen w-screen bg-black text-white overflow-hidden select-none">
@@ -26,36 +33,17 @@ export default function App() {
         </nav>
       </header>
 
-      {/* Main Center Area (Hero Section with 3D Model) */}
+      {/* Main Center Area (Hero Section with 3D Clothing Rack Model) */}
       <main className="relative w-full h-full flex items-center justify-center">
-        <ModelViewer />
+        <ModelViewer targetAngle={targetAngle} />
       </main>
 
-      {/* Bottom Center: 3 Orange T-Shirts & Scrubber Equalizer */}
-      <div className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2.5">
-        {/* 3 Orange T-Shirts using sassy.png */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {[0, 1, 2].map((item) => (
-            <div key={item} className="cursor-pointer">
-              <img
-                src={sassyImg}
-                alt="Sassy Tee"
-                className="w-8 h-8 sm:w-9 sm:h-9 object-contain"
-              />
-            </div>
-          ))}
-        </div>
-
-        {/* Equalizer Waveform / Scrubber Bar */}
-        <div className="flex items-center gap-[3px] h-5">
-          {equalizerBars.map((height, idx) => (
-            <div
-              key={idx}
-              style={{ height: `${height}px` }}
-              className="w-[1.5px] bg-white/80 rounded-[0.5px]"
-            />
-          ))}
-        </div>
+      {/* Bottom Center: Interactive Product Dialer with Ruler Scrubber */}
+      <div className="absolute bottom-5 sm:bottom-7 left-1/2 -translate-x-1/2 z-40">
+        <ProductDialer
+          activeIndex={activeIndex}
+          onSelectProduct={handleSelectProduct}
+        />
       </div>
 
       {/* Right Side: Offer Marquee Strip (Background #F15001, static structure) */}
