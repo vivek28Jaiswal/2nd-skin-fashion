@@ -3,6 +3,12 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import sassyImg from '../assets/imgs/sassy.png'
+import blackTeeImg from '../assets/imgs/blacktshirt.png'
+import blackHalfSleeveImg from '../assets/imgs/blacktshirt-halfsleeve.png'
+import blueTeeImg from '../assets/imgs/bluetshirt.png'
+import jeans1Img from '../assets/imgs/jeans1.png'
+import jeans2Img from '../assets/imgs/jeans2.png'
+import jeans3Img from '../assets/imgs/jeans3.png'
 
 export default function ModelViewer() {
   const containerRef = useRef(null)
@@ -166,103 +172,616 @@ export default function ModelViewer() {
 
     const cottonNormalMap = createCottonNormalMap()
 
-    // Build seamless canvas texture with deep dark streetwear orange & solid pitch-black Stüssy print
-    const teeCanvas = document.createElement('canvas')
-    teeCanvas.width = 1024
-    teeCanvas.height = 1024
-    const teeCtx = teeCanvas.getContext('2d')
-    const teeCanvasTex = new THREE.CanvasTexture(teeCanvas)
-    teeCanvasTex.flipY = false
-    teeCanvasTex.colorSpace = THREE.SRGBColorSpace
+    // Generate authentic denim diagonal 3x3 twill weave normal map
+    const createDenimNormalMap = () => {
+      const size = 512
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      const imgData = ctx.createImageData(size, size)
+      const d = imgData.data
 
-    // Realistic cotton fabric material (zero plastic shine, soft fiber sheen, visible cloth weave)
-    const featuredTeeMaterial = new THREE.MeshPhysicalMaterial({
-      map: teeCanvasTex,
-      normalMap: cottonNormalMap,
-      normalScale: new THREE.Vector2(0.85, 0.85),
-      roughness: 0.96, // 100% matte cotton cloth - eliminates plastic sheen
-      metalness: 0.0,
-      clearcoat: 0.0, // Strictly NO clearcoat (which causes plastic look)
-      sheen: 1.0, // Microfiber cloth sheen scattering
-      sheenColor: new THREE.Color(0xb53502), // Warm fiber fuzz scattering
-      sheenRoughness: 0.8,
-    })
+      const height = new Float32Array(size * size)
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const diag = Math.sin(((x + y) / size) * Math.PI * 180) * 0.5 + 0.5
+          const warp = Math.cos((x / size) * Math.PI * 140) * 0.3 + 0.5
+          const weft = Math.sin((y / size) * Math.PI * 140) * 0.2 + 0.5
+          const threadNoise = (Math.random() - 0.5) * 0.28
+          height[y * size + x] = diag * 0.55 + warp * 0.25 + weft * 0.15 + threadNoise
+        }
+      }
 
-    const shirtImg = new Image()
-    shirtImg.crossOrigin = 'anonymous'
-    shirtImg.onload = () => {
-      // 1. Draw source image onto temp canvas to extract print and color
-      const tempC = document.createElement('canvas')
-      tempC.width = 1024
-      tempC.height = 1024
-      const tempCtx = tempC.getContext('2d')
-      tempCtx.drawImage(shirtImg, 0, 0, 1024, 1024)
-      const srcData = tempCtx.getImageData(0, 0, 1024, 1024).data
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const idx = (y * size + x) * 4
+          const ym = (y - 1 + size) % size
+          const yp = (y + 1) % size
+          const xm = (x - 1 + size) % size
+          const xp = (x + 1) % size
 
-      // Deep dark streetwear orange base color (warm burnt streetwear orange)
-      const darkOrangeR = 198
-      const darkOrangeG = 52
-      const darkOrangeB = 4
+          const dx = (height[y * size + xp] - height[y * size + xm]) * 2.5
+          const dy = (height[yp * size + x] - height[ym * size + x]) * 2.5
 
-      // 2. Base orange fabric with subtle cotton yarn variation
-      teeCtx.fillStyle = `rgb(${darkOrangeR}, ${darkOrangeG}, ${darkOrangeB})`
-      teeCtx.fillRect(0, 0, 1024, 1024)
+          const len = Math.sqrt(dx * dx + dy * dy + 1.0)
+          const nx = (-dx / len) * 0.5 + 0.5
+          const ny = (-dy / len) * 0.5 + 0.5
+          const nz = (1.0 / len) * 0.5 + 0.5
 
-      const outImgData = teeCtx.getImageData(0, 0, 1024, 1024)
-      const out = outImgData.data
+          d[idx] = Math.round(nx * 255)
+          d[idx + 1] = Math.round(ny * 255)
+          d[idx + 2] = Math.round(nz * 255)
+          d[idx + 3] = 255
+        }
+      }
 
-      for (let i = 0; i < out.length; i += 4) {
-        // Subtle micro-heather cotton thread variance
-        const thread = (Math.random() - 0.5) * 10
-        let r = Math.min(255, Math.max(0, darkOrangeR + thread))
-        let g = Math.min(255, Math.max(0, darkOrangeG + thread * 0.35))
-        let b = Math.min(255, Math.max(0, darkOrangeB + thread * 0.15))
+      ctx.putImageData(imgData, 0, 0)
+      const tex = new THREE.CanvasTexture(canvas)
+      tex.wrapS = THREE.RepeatWrapping
+      tex.wrapT = THREE.RepeatWrapping
+      tex.repeat.set(16, 16)
+      return tex
+    }
 
-        const srcR = srcData[i]
-        const srcG = srcData[i + 1]
-        const srcB = srcData[i + 2]
-        const srcA = srcData[i + 3]
+    const denimNormalMap = createDenimNormalMap()
 
-        // Detect black artwork / graphic print from source
-        const saturation = Math.max(srcR, srcG, srcB) - Math.min(srcR, srcG, srcB)
-        const brightness = srcR * 0.299 + srcG * 0.587 + srcB * 0.114
+    // Helper to generate Streetwear T-Shirt Canvas Textures with authentic graphics
+    const createTeeTexture = (imageSrc, baseR, baseG, baseB, mode) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 1024
+      canvas.height = 1024
+      const ctx = canvas.getContext('2d')
+      const tex = new THREE.CanvasTexture(canvas)
+      tex.flipY = false
+      tex.colorSpace = THREE.SRGBColorSpace
 
-        let inkStrength = 0
-        if (srcA > 30) {
-          if (brightness < 60) {
-            // Full solid jet black ink
-            inkStrength = 1.0
-          } else if (brightness < 140 && saturation < 85) {
-            // Anti-aliased black edge
-            inkStrength = Math.min(1.0, Math.max(0, (140 - brightness) / 80))
+      // Render pristine base fabric with subtle heather thread variations
+      const renderBase = () => {
+        const outImgData = ctx.createImageData(1024, 1024)
+        const out = outImgData.data
+        for (let i = 0; i < out.length; i += 4) {
+          const thread = (Math.random() - 0.5) * 8
+          out[i] = Math.min(255, Math.max(0, baseR + thread))
+          out[i + 1] = Math.min(255, Math.max(0, baseG + thread * 0.35))
+          out[i + 2] = Math.min(255, Math.max(0, baseB + thread * 0.2))
+          out[i + 3] = 255
+        }
+        ctx.putImageData(outImgData, 0, 0)
+      }
+
+      renderBase()
+
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        const temp = document.createElement('canvas')
+        temp.width = 1024
+        temp.height = 1024
+        const tctx = temp.getContext('2d')
+        tctx.drawImage(img, 0, 0, 1024, 1024)
+        const srcData = tctx.getImageData(0, 0, 1024, 1024).data
+
+        // 100% pure fabric canvas without ANY studio backdrop
+        const outImgData = ctx.createImageData(1024, 1024)
+        const out = outImgData.data
+
+        for (let y = 0; y < 1024; y++) {
+          const normY = y / 1024
+          for (let x = 0; x < 1024; x++) {
+            const normX = x / 1024
+            const i = (y * 1024 + x) * 4
+
+            const thread = (Math.random() - 0.5) * 8
+            let r = Math.min(255, Math.max(0, baseR + thread))
+            let g = Math.min(255, Math.max(0, baseG + thread * 0.35))
+            let b = Math.min(255, Math.max(0, baseB + thread * 0.2))
+
+            const sR = srcData[i]
+            const sG = srcData[i + 1]
+            const sB = srcData[i + 2]
+            const sA = srcData[i + 3]
+            const brightness = sR * 0.299 + sG * 0.587 + sB * 0.114
+            const saturation = Math.max(sR, sG, sB) - Math.min(sR, sG, sB)
+
+            if (mode === 'orangeStussy') {
+              // Centered black Stüssy script. White background is completely ignored.
+              if (sA > 30) {
+                if (brightness < 60) {
+                  r = 8; g = 8; b = 8
+                } else if (brightness < 140 && saturation < 85) {
+                  const strength = Math.min(1.0, (140 - brightness) / 80)
+                  r = Math.round(r * (1 - strength) + 8 * strength)
+                  g = Math.round(g * (1 - strength) + 8 * strength)
+                  b = Math.round(b * (1 - strength) + 8 * strength)
+                }
+              }
+            } else if (mode === 'blackStussy') {
+              // White Stüssy logo in center chest [normX: 0.28..0.72, normY: 0.30..0.62].
+              // Outside this area, pure black cotton. Studio light-grey backdrop is completely excluded.
+              const inGraphicRegion =
+                normX >= 0.28 && normX <= 0.72 && normY >= 0.30 && normY <= 0.62
+              if (inGraphicRegion && sA > 30 && brightness > 90) {
+                const strength = Math.min(1.0, (brightness - 90) / 75)
+                r = Math.round(r * (1 - strength) + 246 * strength)
+                g = Math.round(g * (1 - strength) + 246 * strength)
+                b = Math.round(b * (1 - strength) + 246 * strength)
+              }
+            } else if (mode === 'blackY3') {
+              // White/grey Yohji Yamamoto Adidas artwork in center [normX: 0.27..0.73, normY: 0.28..0.76].
+              // Outside this area, pure black cotton. Studio white backdrop is completely excluded.
+              const inGraphicRegion =
+                normX >= 0.27 && normX <= 0.73 && normY >= 0.28 && normY <= 0.76
+              if (inGraphicRegion && sA > 30 && brightness > 85) {
+                const strength = Math.min(1.0, (brightness - 85) / 75)
+                const printLuma = Math.min(242, brightness * 1.08)
+                r = Math.round(r * (1 - strength) + printLuma * strength)
+                g = Math.round(g * (1 - strength) + printLuma * strength)
+                b = Math.round(b * (1 - strength) + printLuma * strength)
+              }
+            } else if (mode === 'blueGraffiti') {
+              // Yellow graffiti tag located at lower back [normX: 0.20..0.80, normY: 0.58..0.88].
+              // Outside this area, pure royal blue cotton. Studio white backdrop is completely ignored.
+              const inGraphicRegion =
+                normX >= 0.20 && normX <= 0.80 && normY >= 0.58 && normY <= 0.88
+              const isYellow =
+                inGraphicRegion && sA > 30 && sR > 130 && sG > 120 && sB < 115
+              if (isYellow) {
+                const strength = Math.min(1.0, (sR + sG - sB * 2) / 200)
+                r = Math.round(r * (1 - strength) + 252 * strength)
+                g = Math.round(g * (1 - strength) + 218 * strength)
+                b = Math.round(b * (1 - strength) + 16 * strength)
+              }
+            }
+
+            out[i] = r
+            out[i + 1] = g
+            out[i + 2] = b
+            out[i + 3] = 255
           }
         }
 
-        if (inkStrength > 0) {
-          // Solid pitch black ink (#080808)
-          const inkR = 8
-          const inkG = 8
-          const inkB = 8
-          r = Math.round(r * (1 - inkStrength) + inkR * inkStrength)
-          g = Math.round(g * (1 - inkStrength) + inkG * inkStrength)
-          b = Math.round(b * (1 - inkStrength) + inkB * inkStrength)
+        ctx.putImageData(outImgData, 0, 0)
+        tex.needsUpdate = true
+      }
+      img.src = imageSrc
+      return tex
+    }
+
+    // Procedural Generator for Luxury Streetwear Baggy Jeans Textures
+    const createStylishBaggyJeansTexture = ({
+      baseR,
+      baseG,
+      baseB,
+      fadeR,
+      fadeG,
+      fadeB,
+      stitchColor,
+      rivetColor,
+      buttonColor,
+      leatherPatchColor,
+    }) => {
+      const size = 1024
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      const tex = new THREE.CanvasTexture(canvas)
+      tex.flipY = false
+      tex.colorSpace = THREE.SRGBColorSpace
+
+      // 1. Generate Authentic Denim Twill Cloth with Baggy Thigh Fades & Whiskers
+      const imgData = ctx.createImageData(size, size)
+      const d = imgData.data
+
+      for (let y = 0; y < size; y++) {
+        // Vertical fading curve: strongest across mid-thigh and knee drape (y: 100 to 700)
+        let vFade = 0
+        if (y > 90 && y < 720) {
+          vFade = Math.sin(((y - 90) / 630) * Math.PI)
         }
 
-        out[i] = r
-        out[i + 1] = g
-        out[i + 2] = b
-        out[i + 3] = 255
+        for (let x = 0; x < size; x++) {
+          const idx = (y * size + x) * 4
+
+          // Distance to center of left baggy leg (x ~ 275) and right baggy leg (x ~ 750)
+          const dLeft = Math.abs(x - 275) / 195
+          const dRight = Math.abs(x - 750) / 195
+          const legDist = Math.min(dLeft, dRight)
+          const horizWash = Math.max(0, 1 - legDist * legDist)
+
+          // Radial Whiskering / Creasing pattern near hips/crotch (y: 90..290)
+          let whisker = 0
+          if (y > 80 && y < 300) {
+            const relX = Math.abs(x - 512)
+            const relY = y - 80
+            const angle = Math.atan2(relY, relX)
+            whisker = Math.sin(angle * 13 + relX * 0.045) * 0.16
+            whisker *= Math.max(0, 1 - Math.abs(y - 180) / 110)
+          }
+
+          // Combined stonewash intensity
+          const washIntensity = Math.min(1.0, Math.max(0, vFade * horizWash * 0.88 + whisker))
+
+          // Authentic 3x3 diagonal twill weave micro-structure
+          const twill = Math.sin(((x * 1.4 + y) / size) * Math.PI * 250) * 8.0
+          const weft = Math.cos((y / size) * Math.PI * 250) * 4.0
+          const slubNoise = (Math.random() - 0.5) * 11
+
+          // Interpolate between base dark denim and faded stonewash highlight
+          let r = baseR * (1 - washIntensity) + fadeR * washIntensity + twill + slubNoise
+          let g = baseG * (1 - washIntensity) + fadeG * washIntensity + twill * 0.8 + slubNoise * 0.8
+          let b = baseB * (1 - washIntensity) + fadeB * washIntensity + twill * 0.6 + slubNoise * 0.6
+
+          // Crotch and inner leg crease shading (around center x = 512)
+          if (Math.abs(x - 512) < 24 && y > 160) {
+            const shadow = 1 - (1 - Math.abs(x - 512) / 24) * 0.38
+            r *= shadow
+            g *= shadow
+            b *= shadow
+          }
+
+          // Waistband fold shadow at y = 72
+          if (y >= 70 && y <= 76) {
+            r *= 0.72
+            g *= 0.72
+            b *= 0.72
+          }
+
+          d[idx] = Math.max(0, Math.min(255, Math.round(r)))
+          d[idx + 1] = Math.max(0, Math.min(255, Math.round(g)))
+          d[idx + 2] = Math.max(0, Math.min(255, Math.round(b)))
+          d[idx + 3] = 255
+        }
       }
 
-      teeCtx.putImageData(outImgData, 0, 0)
-      teeCanvasTex.needsUpdate = true
+      ctx.putImageData(imgData, 0, 0)
+
+      // 2. Vector Artwork: Seams, Stitches, Pockets, Rivets, Belt Loops & Hardware
+      const drawStitchLine = (x1, y1, x2, y2, lineWidth = 1.8) => {
+        // Shadow for tactile thread relief
+        ctx.save()
+        ctx.beginPath()
+        ctx.moveTo(x1, y1 + 1)
+        ctx.lineTo(x2, y2 + 1)
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'
+        ctx.lineWidth = lineWidth
+        ctx.setLineDash([6, 3])
+        ctx.stroke()
+        // Thread
+        ctx.beginPath()
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
+        ctx.strokeStyle = stitchColor
+        ctx.lineWidth = lineWidth
+        ctx.setLineDash([6, 3])
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      // Outer Side Seams (Heavy Flat-Felled Double Stitch down left & right)
+      drawStitchLine(32, 74, 32, 960)
+      drawStitchLine(40, 74, 40, 960)
+      drawStitchLine(984, 74, 984, 960)
+      drawStitchLine(992, 74, 992, 960)
+
+      // Inseam Center Division (Double-needle stitch separating wide baggy legs)
+      drawStitchLine(506, 175, 506, 960)
+      drawStitchLine(518, 175, 518, 960)
+
+      // Waistband Double Topstitching across full top (y: 14 and y: 64)
+      drawStitchLine(20, 14, 1004, 14, 2.0)
+      drawStitchLine(20, 64, 1004, 64, 2.0)
+
+      // 5 Heavy Baggy Belt Loops
+      const loopXPositions = [75, 285, 512, 740, 945]
+      loopXPositions.forEach((lx) => {
+        ctx.save()
+        ctx.fillStyle = `rgb(${Math.max(0, baseR - 12)}, ${Math.max(0, baseG - 12)}, ${Math.max(0, baseB - 12)})`
+        ctx.fillRect(lx - 9, 8, 18, 58)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+        ctx.fillRect(lx - 9, 8, 2, 58)
+        ctx.fillRect(lx + 7, 8, 2, 58)
+        ctx.fillStyle = stitchColor
+        ctx.fillRect(lx - 7, 10, 14, 3)
+        ctx.fillRect(lx - 7, 62, 14, 3)
+        ctx.restore()
+      })
+
+      // Back Waistband Leather Brand Patch (Right side)
+      ctx.save()
+      ctx.fillStyle = leatherPatchColor
+      ctx.fillRect(815, 12, 105, 50)
+      ctx.strokeStyle = '#c89e5a'
+      ctx.lineWidth = 1.2
+      ctx.setLineDash([4, 2])
+      ctx.strokeRect(818, 15, 99, 44)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
+      ctx.font = 'bold 11px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('WTF DENIM', 867, 36)
+      ctx.font = '7px sans-serif'
+      ctx.fillText('BAGGY FIT ~ 1994', 867, 48)
+      ctx.restore()
+
+      // Center Front Fly (Iconic Curved J-Stitch)
+      ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(512, 72)
+      ctx.lineTo(512, 140)
+      ctx.bezierCurveTo(512, 175, 455, 170, 450, 135)
+      ctx.lineTo(450, 72)
+      ctx.strokeStyle = stitchColor
+      ctx.lineWidth = 2.0
+      ctx.setLineDash([6, 3])
+      ctx.stroke()
+      ctx.fillStyle = stitchColor
+      ctx.fillRect(507, 172, 10, 3.5)
+      ctx.restore()
+
+      // Curved Front Pockets (Left & Right)
+      const drawCurvedPocket = (isLeft) => {
+        ctx.save()
+        ctx.beginPath()
+        if (isLeft) {
+          ctx.moveTo(90, 72)
+          ctx.quadraticCurveTo(80, 160, 36, 230)
+        } else {
+          ctx.moveTo(934, 72)
+          ctx.quadraticCurveTo(944, 160, 988, 230)
+        }
+        ctx.strokeStyle = stitchColor
+        ctx.lineWidth = 2.0
+        ctx.setLineDash([6, 3])
+        ctx.stroke()
+        ctx.restore()
+      }
+      drawCurvedPocket(true)
+      drawCurvedPocket(false)
+
+      // Coin Pocket (Inside Right Pocket)
+      drawStitchLine(770, 100, 865, 100, 1.8)
+      drawStitchLine(770, 106, 865, 106, 1.8)
+
+      // Rivets (Metallic Dome Studs with 3D Highlight)
+      const drawRivet = (rx, ry) => {
+        ctx.save()
+        const grad = ctx.createRadialGradient(rx - 1.5, ry - 1.5, 1, rx, ry, 5.5)
+        grad.addColorStop(0, '#ffffff')
+        grad.addColorStop(0.3, rivetColor)
+        grad.addColorStop(1, '#1b1b1b')
+        ctx.fillStyle = grad
+        ctx.beginPath()
+        ctx.arc(rx, ry, 5.5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+        ctx.beginPath()
+        ctx.arc(rx, ry, 1.5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+
+      drawRivet(90, 74)
+      drawRivet(36, 228)
+      drawRivet(934, 74)
+      drawRivet(988, 228)
+      drawRivet(770, 102)
+      drawRivet(865, 102)
+
+      // Center Metal Shank Button on Waistband
+      ctx.save()
+      const bx = 512
+      const by = 38
+      const bGrad = ctx.createRadialGradient(bx - 3, by - 3, 2, bx, by, 14)
+      bGrad.addColorStop(0, '#ffffff')
+      bGrad.addColorStop(0.35, buttonColor)
+      bGrad.addColorStop(1, '#202020')
+      ctx.fillStyle = bGrad
+      ctx.beginPath()
+      ctx.arc(bx, by, 13, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.arc(bx, by, 8.5, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)'
+      ctx.beginPath()
+      ctx.arc(bx, by, 3, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+
+      // Baggy Streetwear Carpenter Utility Detail on Side (Hammer Loop on left leg)
+      ctx.save()
+      ctx.fillStyle = `rgb(${Math.max(0, baseR - 12)}, ${Math.max(0, baseG - 12)}, ${Math.max(0, baseB - 12)})`
+      ctx.fillRect(42, 430, 42, 14)
+      ctx.strokeStyle = stitchColor
+      ctx.lineWidth = 1.2
+      ctx.setLineDash([4, 2])
+      ctx.strokeRect(42, 430, 42, 14)
+      ctx.fillStyle = stitchColor
+      ctx.fillRect(42, 430, 4, 14)
+      ctx.fillRect(80, 430, 4, 14)
+      ctx.restore()
+
+      // Bottom Cuffs (Folded Heavy Hem with Chain-Stitching & Roping Effect)
+      ctx.save()
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.28)'
+      ctx.fillRect(20, 960, 984, 64)
+      drawStitchLine(20, 964, 1004, 964, 2.2)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)'
+      ctx.lineWidth = 2.0
+      ctx.setLineDash([4, 3])
+      ctx.beginPath()
+      ctx.moveTo(20, 1020)
+      ctx.lineTo(1004, 1020)
+      ctx.stroke()
+      ctx.restore()
+
+      tex.needsUpdate = true
+      return tex
     }
-    shirtImg.src = sassyImg
+
+    // 4 Streetwear T-Shirt Materials
+    const orangeTeeTex = createTeeTexture(sassyImg, 198, 52, 4, 'orangeStussy')
+    const blackStussyTex = createTeeTexture(blackTeeImg, 16, 17, 19, 'blackStussy')
+    const blackY3Tex = createTeeTexture(blackHalfSleeveImg, 18, 19, 21, 'blackY3')
+    const blueGraffitiTex = createTeeTexture(blueTeeImg, 24, 65, 173, 'blueGraffiti')
+
+    const orangeTeeMaterial = new THREE.MeshPhysicalMaterial({
+      map: orangeTeeTex,
+      normalMap: cottonNormalMap,
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughness: 0.96,
+      metalness: 0.0,
+      clearcoat: 0.0,
+      sheen: 1.0,
+      sheenColor: new THREE.Color(0xb53502),
+      sheenRoughness: 0.8,
+    })
+
+    const blackStussyMaterial = new THREE.MeshPhysicalMaterial({
+      map: blackStussyTex,
+      normalMap: cottonNormalMap,
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughness: 0.96,
+      metalness: 0.0,
+      clearcoat: 0.0,
+      sheen: 0.4,
+      sheenColor: new THREE.Color(0x222224),
+      sheenRoughness: 0.8,
+    })
+
+    const blackY3Material = new THREE.MeshPhysicalMaterial({
+      map: blackY3Tex,
+      normalMap: cottonNormalMap,
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughness: 0.96,
+      metalness: 0.0,
+      clearcoat: 0.0,
+      sheen: 0.4,
+      sheenColor: new THREE.Color(0x222224),
+      sheenRoughness: 0.8,
+    })
+
+    const blueTeeMaterial = new THREE.MeshPhysicalMaterial({
+      map: blueGraffitiTex,
+      normalMap: cottonNormalMap,
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughness: 0.96,
+      metalness: 0.0,
+      clearcoat: 0.0,
+      sheen: 0.9,
+      sheenColor: new THREE.Color(0x1d4ed8),
+      sheenRoughness: 0.8,
+    })
+
+    // 3 Distinct Designer Baggy Streetwear Denim Editions
+    // Edition 1: 90s Vintage Stonewash Baggy Indigo Denim
+    const jeans1Tex = createStylishBaggyJeansTexture({
+      baseR: 36,
+      baseG: 56,
+      baseB: 88,
+      fadeR: 112,
+      fadeG: 148,
+      fadeB: 188,
+      stitchColor: '#d99b38',
+      rivetColor: '#c8963e',
+      buttonColor: '#d4af37',
+      leatherPatchColor: '#6d4522',
+    })
+
+    // Edition 2: Y2K Sun-Bleached Ice Blue Skater Baggy Denim
+    const jeans2Tex = createStylishBaggyJeansTexture({
+      baseR: 78,
+      baseG: 110,
+      baseB: 144,
+      fadeR: 168,
+      fadeG: 198,
+      fadeB: 230,
+      stitchColor: '#c98836',
+      rivetColor: '#b0b5be',
+      buttonColor: '#b8bdc6',
+      leatherPatchColor: '#8a5c34',
+    })
+
+    // Edition 3: Washed Raw Charcoal Black Baggy Denim
+    const jeans3Tex = createStylishBaggyJeansTexture({
+      baseR: 26,
+      baseG: 27,
+      baseB: 30,
+      fadeR: 64,
+      fadeG: 68,
+      fadeB: 74,
+      stitchColor: '#989ca6',
+      rivetColor: '#686c75',
+      buttonColor: '#7a7e88',
+      leatherPatchColor: '#2b2927',
+    })
+
+    const jeans1Material = new THREE.MeshPhysicalMaterial({
+      map: jeans1Tex,
+      normalMap: denimNormalMap,
+      normalScale: new THREE.Vector2(1.1, 1.1),
+      roughness: 0.92,
+      metalness: 0.0,
+      clearcoat: 0.0,
+      sheen: 0.75,
+      sheenColor: new THREE.Color(0x93c5fd),
+      sheenRoughness: 0.75,
+    })
+
+    const jeans2Material = new THREE.MeshPhysicalMaterial({
+      map: jeans2Tex,
+      normalMap: denimNormalMap,
+      normalScale: new THREE.Vector2(1.1, 1.1),
+      roughness: 0.92,
+      metalness: 0.0,
+      clearcoat: 0.0,
+      sheen: 0.75,
+      sheenColor: new THREE.Color(0xbfdbfe),
+      sheenRoughness: 0.75,
+    })
+
+    const jeans3Material = new THREE.MeshPhysicalMaterial({
+      map: jeans3Tex,
+      normalMap: denimNormalMap,
+      normalScale: new THREE.Vector2(1.1, 1.1),
+      roughness: 0.94,
+      metalness: 0.0,
+      clearcoat: 0.0,
+      sheen: 0.5,
+      sheenColor: new THREE.Color(0x374151),
+      sheenRoughness: 0.75,
+    })
+
+    // Distribution mapping for T-Shirts across carousel
+    const getTeeMaterial = (name, parentName) => {
+      const id = `${name} ${parentName}`.toLowerCase()
+      // Orange Stüssy Featured Tee
+      if (id.includes('052') || id.includes('048') || id.includes('044')) return orangeTeeMaterial
+      // Black Stüssy Signature Tee
+      if (id.includes('051') || id.includes('047') || id.includes('043')) return blackStussyMaterial
+      // Blue Graffiti Streetwear Tee
+      if (id.includes('050') || id.includes('046') || id.includes('042')) return blueTeeMaterial
+      // Black Y-3 Adidas Streetwear Tee
+      return blackY3Material
+    }
+
+    // Distribution mapping for Jeans across carousel
+    const getJeansMaterial = (name, parentName) => {
+      const id = `${name} ${parentName}`.toLowerCase()
+      // Light Vintage Wash Blue Denim
+      if (id.includes('020') || id.includes('023') || id.includes('026')) return jeans1Material
+      // Medium Indigo Stone-Wash Denim
+      if (id.includes('021') || id.includes('024') || id.includes('027')) return jeans2Material
+      // Washed Charcoal Black Denim
+      return jeans3Material
+    }
 
     // Physics and interaction state
     let isDragging = false
     let dragMode = null // 'ring' | 'garment' | 'carousel'
-    let activeGarment = null
     let lastPointerX = 0
     let lastPointerY = 0
     let spinVelocity = 0
@@ -276,14 +795,13 @@ export default function ModelViewer() {
     const raycaster = new THREE.Raycaster()
     const mouse = new THREE.Vector2()
     const interactiveObjects = []
-    const garmentPhysics = []
 
     loader.load(
       '/models/rack.glb',
       (gltf) => {
         const model = gltf.scene
 
-        // Apply realistic silver materials to rack and hangers; keep clothes as matte fabric
+        // Apply realistic materials across rack, hangers, and all clothes designs
         model.traverse((child) => {
           if (child.isMesh) {
             const name = (child.name || '').toLowerCase()
@@ -295,19 +813,25 @@ export default function ModelViewer() {
               parentName.startsWith('circle')
             const isHanger =
               name.startsWith('percha') || parentName.startsWith('percha')
+            const isShirt =
+              name.includes('camiseta') ||
+              parentName.includes('group02') ||
+              (parentName.startsWith('group0') &&
+                parseInt(parentName.replace(/\D/g, ''), 10) <= 67)
+            const isJeans =
+              name.includes('plane') ||
+              (parentName.startsWith('group0') &&
+                parseInt(parentName.replace(/\D/g, ''), 10) >= 68)
 
             if (isRack) {
               child.material = rackSilverMaterial
             } else if (isHanger) {
               child.material = hangerSilverMaterial
-            } else if (
-              name.includes('camiseta pie052') ||
-              parentName.includes('group067') ||
-              name.includes('052')
-            ) {
-              child.material = featuredTeeMaterial
+            } else if (isShirt) {
+              child.material = getTeeMaterial(name, parentName)
+            } else if (isJeans) {
+              child.material = getJeansMaterial(name, parentName)
             } else {
-              // Ensure clothes remain authentic matte fabric cloth (not reflective metal)
               child.material = child.material.clone()
               child.material.metalness = 0.0
               child.material.roughness = 0.92
