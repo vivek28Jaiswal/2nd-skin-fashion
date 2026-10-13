@@ -259,6 +259,25 @@ export default function ModelViewer() {
     }
     shirtImg.src = sassyImg
 
+    // Physics and interaction state
+    let isDragging = false
+    let dragMode = null // 'ring' | 'garment' | 'carousel'
+    let activeGarment = null
+    let lastPointerX = 0
+    let lastPointerY = 0
+    let spinVelocity = 0
+    let prevCarouselRotY = 0
+    let prevCarouselVelocityY = 0
+    let lastTime = performance.now()
+
+    const carouselGroup = new THREE.Group()
+    carouselGroup.name = 'rotating_carousel'
+
+    const raycaster = new THREE.Raycaster()
+    const mouse = new THREE.Vector2()
+    const interactiveObjects = []
+    const garmentPhysics = []
+
     loader.load(
       '/models/rack.glb',
       (gltf) => {
@@ -297,33 +316,79 @@ export default function ModelViewer() {
           }
         })
 
-        // Center and normalize size
+        // Measure original model bounds
         const box = new THREE.Box3().setFromObject(model)
         const center = box.getCenter(new THREE.Vector3())
         const size = box.getSize(new THREE.Vector3())
+        const minY = box.min.y
+        const totalHeight = size.y
 
-        // Group wrapper for perfect centered rotation and scale
+        // Main group wrapper for centered rotation and scale
         const group = new THREE.Group()
         model.position.x = -center.x
-        model.position.y = -center.y + (size.y * 0.08)
+        model.position.y = -center.y + size.y * 0.08
         model.position.z = -center.z
         group.add(model)
 
-        // Scale down ("chhota kr dena")
+        // Scale and initial angle (strictly preserved from user specification)
         const scale = 0.70
         group.scale.set(scale, scale, scale)
-
-        // Rotation matching reference
         group.rotation.y = -Math.PI * 0.25 // -45 degrees
-
-        // Position model down slightly ("thoda sa niche")
         group.position.y = -size.y * 0.15
         scene.add(group)
 
-        // Set camera position and target chosen by user
+        // Update matrices so world positions are completely resolved
+        scene.updateMatrixWorld(true)
+
+        // Find the exact geometric center of the top circular metal ring
+        const ringObject =
+          model.getObjectByName('Circle001_1_0') ||
+          model.getObjectByName('Circle001')
+        const ringBox = new THREE.Box3().setFromObject(ringObject)
+        const ringWorldCenter = ringBox.getCenter(new THREE.Vector3())
+        const ringLocalCenter = group.worldToLocal(ringWorldCenter.clone())
+
+        // Place rotating carousel group precisely at the center axis of the circular ring
+        carouselGroup.position.set(ringLocalCenter.x, 0, ringLocalCenter.z)
+        group.add(carouselGroup)
+        group.updateMatrixWorld(true)
+
+        // Separate rotating carousel from stationary base stand:
+        // In rack.glb, rootNode contains Line030..Line036, Circle001, and Group027..Group076
+        const rootNode = model.getObjectByName('RootNode') || model
+        const itemsToMove = []
+
+        rootNode.children.forEach((child) => {
+          const name = (child.name || '').toLowerCase()
+          const isRing = name.startsWith('circle')
+          const isClothingGroup = name.startsWith('group0')
+          const childBox = new THREE.Box3().setFromObject(child)
+          // Upper spokes connecting to the top ring rotate with the carousel
+          const isTopSpoke =
+            name.startsWith('line') && childBox.min.y > minY + totalHeight * 0.55
+
+          if (isRing || isClothingGroup || isTopSpoke) {
+            itemsToMove.push(child)
+          }
+        })
+
+        // Attach upper assembly to carouselGroup while preserving exact world transform
+        itemsToMove.forEach((child) => {
+          carouselGroup.attach(child)
+        })
+
+        // Find interactive objects for raycasting
+        carouselGroup.traverse((child) => {
+          if (child.isMesh) {
+            interactiveObjects.push(child)
+          }
+        })
+
+        // Set camera position and target (strictly preserved)
         camera.position.set(1.62, 53.13, 247.46)
         camera.lookAt(0, -11.8, 0)
 
+        prevCarouselRotY = carouselGroup.rotation.y
         setLoading(false)
       },
       undefined,
@@ -332,6 +397,71 @@ export default function ModelViewer() {
         setLoading(false)
       }
     )
+
+    // Pointer Interaction Handlers
+    const updateMouseCoords = (e) => {
+      const rect = container.getBoundingClientRect()
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+    }
+
+    const onPointerDown = (e) => {
+      updateMouseCoords(e)
+      raycaster.setFromCamera(mouse, camera)
+      const hits = raycaster.intersectObjects(interactiveObjects, true)
+
+      if (hits.length > 0) {
+        dragMode = 'carousel'
+      } else {
+        dragMode = 'carousel'
+      }
+
+      isDragging = true
+      lastPointerX = e.clientX
+      lastPointerY = e.clientY
+      spinVelocity = 0
+      container.style.cursor = 'grabbing'
+    }
+
+    const onPointerMove = (e) => {
+      updateMouseCoords(e)
+
+      if (isDragging) {
+        const deltaX = e.clientX - lastPointerX
+        lastPointerX = e.clientX
+        lastPointerY = e.clientY
+
+        // Responsive, smooth rotation of upper carousel around its exact center axis
+        const speed = 0.007
+        carouselGroup.rotation.y += deltaX * speed
+        spinVelocity = deltaX * speed
+      } else {
+        // Hover state cursor detection
+        raycaster.setFromCamera(mouse, camera)
+        const hits = raycaster.intersectObjects(interactiveObjects, true)
+        if (hits.length > 0) {
+          container.style.cursor = 'grab'
+        } else {
+          container.style.cursor = 'default'
+        }
+      }
+    }
+
+    const onPointerUp = () => {
+      isDragging = false
+      dragMode = null
+
+      // Check current hover to restore appropriate cursor
+      raycaster.setFromCamera(mouse, camera)
+      const hits = raycaster.intersectObjects(interactiveObjects, true)
+      container.style.cursor = hits.length > 0 ? 'grab' : 'default'
+    }
+
+    // Touch & Mouse listeners on container and window
+    container.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerUp)
 
     // Resize handler
     const handleResize = () => {
@@ -344,16 +474,31 @@ export default function ModelViewer() {
     }
     window.addEventListener('resize', handleResize)
 
-    // Render loop (static locked view)
+    // Physics-driven render loop (Smooth Ball-Bearing Inertia)
     let animationFrameId
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate)
+
+      // Natural rotational inertia and gradual ball-bearing friction deceleration
+      if (!isDragging) {
+        if (Math.abs(spinVelocity) > 0.00005) {
+          carouselGroup.rotation.y += spinVelocity
+          spinVelocity *= 0.948 // Smooth physical bearing damping
+        } else {
+          spinVelocity = 0
+        }
+      }
+
       renderer.render(scene, camera)
     }
     animate()
 
     // Cleanup
     return () => {
+      container.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerUp)
       window.removeEventListener('resize', handleResize)
       cancelAnimationFrame(animationFrameId)
       renderer.dispose()
@@ -364,13 +509,20 @@ export default function ModelViewer() {
   }, [])
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center pointer-events-none select-none">
+    <div
+      className="relative w-full h-full flex items-center justify-center select-none"
+      style={{ touchAction: 'none' }}
+    >
       {loading && (
         <div className="absolute text-xs tracking-widest uppercase text-white/50 animate-pulse pointer-events-none">
           Loading Model...
         </div>
       )}
-      <div ref={containerRef} className="w-full h-full pointer-events-none" />
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{ touchAction: 'none' }}
+      />
     </div>
   )
 }
