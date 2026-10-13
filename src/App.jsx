@@ -9,9 +9,6 @@ export default function App() {
   const [hoveredName, setHoveredName] = useState(null)
 
   const marqueeRef = useRef(null)
-  const headerRef = useRef(null)
-  const dialerWrapperRef = useRef(null)
-  const asideRef = useRef(null)
   const badgeWrapperRef = useRef(null)
   const cardInnerRef = useRef(null)
   const mousePosRef = useRef({ x: -9999, y: -9999 })
@@ -67,45 +64,16 @@ export default function App() {
     }
   }, [hoveredName])
 
-  // GSAP: Seamless Infinite Vertical Marquee & Page Entrance Animations
+  // GSAP: Seamless Infinite Vertical Marquee Loop
   useEffect(() => {
-    // 1. Seamless Infinite Vertical Marquee Loop
     let marqueeTween
     if (marqueeRef.current) {
       marqueeTween = gsap.to(marqueeRef.current, {
         yPercent: -50,
         repeat: -1,
         ease: 'none',
-        duration: 16,
+        duration: 28,
       })
-    }
-
-    // 2. Entrance Stagger for Header Nav Links
-    if (headerRef.current) {
-      const links = headerRef.current.querySelectorAll('a')
-      gsap.fromTo(
-        links,
-        { y: -16, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.9, stagger: 0.08, ease: 'power3.out', delay: 0.1 }
-      )
-    }
-
-    // 3. Aside Marquee Strip Entrance
-    if (asideRef.current) {
-      gsap.fromTo(
-        asideRef.current,
-        { x: 30, opacity: 0 },
-        { x: 0, opacity: 1, duration: 1.0, ease: 'power3.out', delay: 0.2 }
-      )
-    }
-
-    // 4. Bottom Dialer Entrance
-    if (dialerWrapperRef.current) {
-      gsap.fromTo(
-        dialerWrapperRef.current,
-        { y: 35, opacity: 0 },
-        { y: 0, opacity: 1, duration: 1.1, ease: 'power3.out', delay: 0.35 }
-      )
     }
 
     return () => {
@@ -116,10 +84,7 @@ export default function App() {
   return (
     <div className="relative h-screen w-screen bg-black text-white overflow-hidden select-none">
       {/* Top Navigation */}
-      <header
-        ref={headerRef}
-        className="absolute top-0 left-0 right-0 z-40 px-8 sm:px-12 pt-7"
-      >
+      <header className="absolute top-0 left-0 right-0 z-40 px-8 sm:px-12 pt-7">
         <nav className="flex items-center gap-14 sm:gap-20 md:gap-24 text-[12px] sm:text-[13px] tracking-wider font-medium uppercase text-white">
           <a href="#wtf" className="hover:opacity-80 transition-opacity">
             WTF
@@ -145,10 +110,7 @@ export default function App() {
       </main>
 
       {/* Bottom Center: Interactive Product Dialer */}
-      <div
-        ref={dialerWrapperRef}
-        className="absolute bottom-5 sm:bottom-7 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center"
-      >
+      <div className="absolute bottom-5 sm:bottom-7 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center">
         <ProductDialer
           activeIndex={activeIndex}
           onSelectProduct={handleSelectProduct}
@@ -173,18 +135,20 @@ export default function App() {
 
       {/* Right Side: Offer Marquee Strip (Background #F15001, seamless GSAP infinite loop) */}
       <aside
-        ref={asideRef}
-        className="fixed top-0 right-0 h-full w-[24px] sm:w-[26px] bg-[#F15001] z-50 overflow-hidden flex items-center justify-center"
+        className="fixed top-0 right-0 h-full w-[24px] sm:w-[26px] bg-[#F15001] z-50 overflow-hidden flex justify-center"
       >
         <div
           ref={marqueeRef}
           className="flex flex-col will-change-transform select-none"
         >
-          <div className="vertical-marquee text-white text-[9.5px] sm:text-[10px] tracking-[0.20em] uppercase font-medium whitespace-nowrap py-4">
-            10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~
+          <div className="vertical-marquee text-white text-[9.5px] sm:text-[10px] tracking-[0.20em] uppercase font-medium whitespace-nowrap py-1">
+            {'10% OFF ON FIRST ORDER ~ '.repeat(20)}
           </div>
-          <div className="vertical-marquee text-white text-[9.5px] sm:text-[10px] tracking-[0.20em] uppercase font-medium whitespace-nowrap py-4">
-            10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~ 10% OFF ON FIRST ORDER ~
+          <div
+            className="vertical-marquee text-white text-[9.5px] sm:text-[10px] tracking-[0.20em] uppercase font-medium whitespace-nowrap py-1"
+            aria-hidden="true"
+          >
+            {'10% OFF ON FIRST ORDER ~ '.repeat(20)}
           </div>
         </div>
       </aside>
