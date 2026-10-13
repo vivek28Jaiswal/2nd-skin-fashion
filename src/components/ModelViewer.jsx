@@ -34,8 +34,11 @@ export default function ModelViewer() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(container.clientWidth, container.clientHeight)
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.0
+    renderer.toneMappingExposure = 1.05
     renderer.outputColorSpace = THREE.SRGBColorSpace
+    // Physically Accurate Soft Dynamic Shadow Mapping
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFShadowMap
     container.appendChild(renderer.domElement)
 
     // Studio Environment for realistic metallic silver reflections
@@ -97,21 +100,48 @@ export default function ModelViewer() {
       envMapIntensity: 1.8,
     })
 
-    // Balanced studio lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+    // Balanced studio lighting with physically accurate soft shadow projection
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55)
     scene.add(ambientLight)
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.6)
-    dirLight1.position.set(5, 12, 8)
+    // Key directional light with high-res soft shadow map
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.7)
+    dirLight1.position.set(22, 38, 28)
+    dirLight1.castShadow = true
+    dirLight1.shadow.mapSize.width = 2048
+    dirLight1.shadow.mapSize.height = 2048
+    dirLight1.shadow.camera.near = 5
+    dirLight1.shadow.camera.far = 130
+    const shadowDist = 48
+    dirLight1.shadow.camera.left = -shadowDist
+    dirLight1.shadow.camera.right = shadowDist
+    dirLight1.shadow.camera.top = shadowDist
+    dirLight1.shadow.camera.bottom = -shadowDist
+    dirLight1.shadow.bias = -0.00035
+    dirLight1.shadow.normalBias = 0.02
+    dirLight1.shadow.radius = 2.2
     scene.add(dirLight1)
 
-    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8)
-    dirLight2.position.set(-6, 6, -5)
+    // Fill directional light with soft shadow mapping
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.85)
+    dirLight2.position.set(-24, 22, -18)
+    dirLight2.castShadow = true
+    dirLight2.shadow.mapSize.width = 1024
+    dirLight2.shadow.mapSize.height = 1024
+    dirLight2.shadow.camera.near = 5
+    dirLight2.shadow.camera.far = 110
+    dirLight2.shadow.camera.left = -shadowDist
+    dirLight2.shadow.camera.right = shadowDist
+    dirLight2.shadow.camera.top = shadowDist
+    dirLight2.shadow.camera.bottom = -shadowDist
+    dirLight2.shadow.bias = -0.00035
+    dirLight2.shadow.normalBias = 0.02
+    dirLight2.shadow.radius = 3.2
     scene.add(dirLight2)
 
-    // Rim light to highlight silver metal tube silhouettes
-    const rimLight = new THREE.DirectionalLight(0xddeeff, 1.2)
-    rimLight.position.set(0, 8, -8)
+    // Rim light to highlight silver metal tube silhouettes and fabric contours
+    const rimLight = new THREE.DirectionalLight(0xddeeff, 1.25)
+    rimLight.position.set(0, 16, -26)
     scene.add(rimLight)
 
     // Load Model
@@ -795,15 +825,76 @@ export default function ModelViewer() {
     const raycaster = new THREE.Raycaster()
     const mouse = new THREE.Vector2()
     const interactiveObjects = []
+    const garmentsPhysicsList = []
+
+    // GPU Vertex Shader Cloth Deformer (Lag, Traveling Ripples, Sleeve Flutter & Collision Compression)
+    const applyClothShader = (material, isTee, bounds, paramsUniform) => {
+      const boundsUniform = {
+        value: new THREE.Vector4(bounds.min.y, bounds.max.y, bounds.min.x, bounds.max.x),
+      }
+
+      const patchVertexShader = (shader) => {
+        shader.uniforms.uClothParams = paramsUniform
+        shader.uniforms.uClothBounds = boundsUniform
+        shader.uniforms.uGarmentType = { value: isTee ? 1.0 : 2.0 }
+
+        shader.vertexShader = `
+          uniform vec4 uClothParams;
+          uniform vec4 uClothBounds;
+          uniform float uGarmentType;
+        ` + shader.vertexShader
+
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          `
+          #include <begin_vertex>
+
+          float clothH = max(1.0, uClothBounds.y - uClothBounds.x);
+          float normY = clamp((uClothBounds.y - position.y) / clothH, 0.0, 1.0);
+
+          // Parabolic fabric lag bend (anchored at hanger top, flexible towards lower hem)
+          float bendWeight = pow(normY, 1.6);
+          float lagDisp = uClothParams.x * bendWeight * 1.8;
+
+          // Traveling dynamic ripples, folds and creases
+          float wavePhase = normY * 8.0 - uClothParams.z * 3.5;
+          float crossPhase = position.x * 0.08;
+          float foldWave = sin(wavePhase + crossPhase) * cos(normY * 4.0);
+          float wrinkleDisp = foldWave * uClothParams.y * bendWeight * 1.4;
+
+          // Compression ripples when colliding with neighbouring garments
+          float compWave = sin(normY * 16.0) * sin(position.x * 0.15) * uClothParams.w * bendWeight * 1.5;
+
+          // Sleeve flexibility and aerodynamic flare for t-shirts
+          if (uGarmentType < 1.5) {
+            float halfW = max(1.0, (uClothBounds.w - uClothBounds.z) * 0.5);
+            float relX = abs(position.x) / halfW;
+            if (relX > 0.52 && normY < 0.65) {
+              float sWeight = (relX - 0.52) * 2.0;
+              transformed.x += sin(uClothParams.z * 4.0 + normY * 3.0) * uClothParams.y * sWeight * 1.0;
+            }
+          }
+
+          // Apply fabric deformation along normal and tangent
+          transformed.z += (lagDisp + wrinkleDisp + compWave);
+          `
+        )
+      }
+
+      material.onBeforeCompile = patchVertexShader
+    }
 
     loader.load(
       '/models/rack.glb',
       (gltf) => {
         const model = gltf.scene
 
-        // Apply realistic materials across rack, hangers, and all clothes designs
+        // Apply realistic materials across rack, hangers, and all clothes designs with shadow support
         model.traverse((child) => {
           if (child.isMesh) {
+            child.castShadow = true
+            child.receiveShadow = true
+
             const name = (child.name || '').toLowerCase()
             const parentName = (child.parent?.name || '').toLowerCase()
             const isRack =
@@ -828,9 +919,9 @@ export default function ModelViewer() {
             } else if (isHanger) {
               child.material = hangerSilverMaterial
             } else if (isShirt) {
-              child.material = getTeeMaterial(name, parentName)
+              child.material = getTeeMaterial(name, parentName).clone()
             } else if (isJeans) {
-              child.material = getJeansMaterial(name, parentName)
+              child.material = getJeansMaterial(name, parentName).clone()
             } else {
               child.material = child.material.clone()
               child.material.metalness = 0.0
@@ -877,7 +968,7 @@ export default function ModelViewer() {
         group.add(carouselGroup)
         group.updateMatrixWorld(true)
 
-        // Separate rotating carousel from stationary base stand:
+        // Separate rotating carousel from stationary base stand
         // In rack.glb, rootNode contains Line030..Line036, Circle001, and Group027..Group076
         const rootNode = model.getObjectByName('RootNode') || model
         const itemsToMove = []
@@ -887,7 +978,6 @@ export default function ModelViewer() {
           const isRing = name.startsWith('circle')
           const isClothingGroup = name.startsWith('group0')
           const childBox = new THREE.Box3().setFromObject(child)
-          // Upper spokes connecting to the top ring rotate with the carousel
           const isTopSpoke =
             name.startsWith('line') && childBox.min.y > minY + totalHeight * 0.55
 
@@ -896,10 +986,92 @@ export default function ModelViewer() {
           }
         })
 
-        // Attach upper assembly to carouselGroup while preserving exact world transform
+        // Attach upper assembly directly to carouselGroup while preserving exact world transform
         itemsToMove.forEach((child) => {
           carouselGroup.attach(child)
         })
+
+        // Setup physical compound pendulum and cloth physics for each garment
+        itemsToMove.forEach((child) => {
+          const name = (child.name || '').toLowerCase()
+          if (!name.startsWith('group0')) return
+
+          const basePosition = child.position.clone()
+          const baseQuaternion = child.quaternion.clone()
+
+          // Radial and Tangential directional vectors from carousel center to garment hook
+          const radialDir = new THREE.Vector3(basePosition.x, 0, basePosition.z).normalize()
+          const tangentDir = new THREE.Vector3(-radialDir.z, 0, radialDir.x).normalize()
+          let angleOnRing = Math.atan2(basePosition.z, basePosition.x)
+          if (angleOnRing < 0) angleOnRing += Math.PI * 2
+          const radius = Math.sqrt(basePosition.x * basePosition.x + basePosition.z * basePosition.z)
+
+          // Locate cloth meshes inside this clothing group
+          let clothMeshes = []
+          let isShirt = false
+          child.traverse((c) => {
+            if (c.isMesh) {
+              const cName = (c.name || '').toLowerCase()
+              if (cName.includes('camiseta') || cName.includes('plane')) {
+                clothMeshes.push(c)
+                if (cName.includes('camiseta')) isShirt = true
+              }
+            }
+          })
+
+          const paramsUniform = { value: new THREE.Vector4(0, 0, 0, 0) }
+          clothMeshes.forEach((cm) => {
+            cm.geometry.computeBoundingBox()
+            const bounds = cm.geometry.boundingBox || new THREE.Box3(new THREE.Vector3(-15, -40, -15), new THREE.Vector3(15, 40, 15))
+            applyClothShader(cm.material, isShirt, bounds, paramsUniform)
+          })
+
+          garmentsPhysicsList.push({
+            name: child.name,
+            group: child,
+            basePosition: basePosition,
+            baseQuaternion: baseQuaternion,
+            radialDir: radialDir,
+            tangentDir: tangentDir,
+            angleOnRing: angleOnRing,
+            radius: radius,
+            isTee: isShirt,
+            // Realistic Physical Properties
+            // Denim Jeans: heavier mass, deeper momentum, higher stiffness
+            // T-Shirts: lightweight, higher air draft reactivity, flexible sleeves
+            mass: isShirt ? 0.22 : 0.70,
+            length: isShirt ? 32.0 : 44.0,
+            damping: isShirt ? 0.948 : 0.968,
+            stiffness: isShirt ? 36.0 : 48.0,
+            // Dynamic State
+            angle: 0.0,
+            velocity: 0.0,
+            accel: 0.0,
+            radialTilt: 0.0,
+            radialVel: 0.0,
+            radialAccel: 0.0,
+            compression: 0.0,
+            clothParams: paramsUniform,
+          })
+        })
+
+        // Sort garments circularly around the rack to establish neighbouring cloth collision topology
+        garmentsPhysicsList.sort((a, b) => a.angleOnRing - b.angleOnRing)
+        const numG = garmentsPhysicsList.length
+        for (let i = 0; i < numG; i++) {
+          const leftIdx = (i - 1 + numG) % numG
+          const rightIdx = (i + 1) % numG
+          garmentsPhysicsList[i].leftIdx = leftIdx
+          garmentsPhysicsList[i].rightIdx = rightIdx
+
+          let dLeft = garmentsPhysicsList[i].angleOnRing - garmentsPhysicsList[leftIdx].angleOnRing
+          if (dLeft <= 0) dLeft += Math.PI * 2
+          let dRight = garmentsPhysicsList[rightIdx].angleOnRing - garmentsPhysicsList[i].angleOnRing
+          if (dRight <= 0) dRight += Math.PI * 2
+
+          garmentsPhysicsList[i].restDistLeft = dLeft * garmentsPhysicsList[i].radius
+          garmentsPhysicsList[i].restDistRight = dRight * garmentsPhysicsList[i].radius
+        }
 
         // Find interactive objects for raycasting
         carouselGroup.traverse((child) => {
@@ -913,6 +1085,7 @@ export default function ModelViewer() {
         camera.lookAt(0, -11.8, 0)
 
         prevCarouselRotY = carouselGroup.rotation.y
+        lastTime = performance.now()
         setLoading(false)
       },
       undefined,
@@ -998,10 +1171,14 @@ export default function ModelViewer() {
     }
     window.addEventListener('resize', handleResize)
 
-    // Physics-driven render loop (Smooth Ball-Bearing Inertia)
+    // Physics-driven render loop (Inertia, Cloth Simulation, Collisions & Soft Shadows)
     let animationFrameId
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate)
+
+      const currentTime = performance.now()
+      const dt = Math.min((currentTime - lastTime) / 1000, 0.04)
+      lastTime = currentTime
 
       // Natural rotational inertia and gradual ball-bearing friction deceleration
       if (!isDragging) {
@@ -1010,6 +1187,125 @@ export default function ModelViewer() {
           spinVelocity *= 0.948 // Smooth physical bearing damping
         } else {
           spinVelocity = 0
+        }
+      }
+
+      // Compute carousel rotational acceleration and velocity with physical hand-drag limits
+      const currentCarouselRotY = carouselGroup.rotation.y
+      const rawCarouselVelY = (currentCarouselRotY - prevCarouselRotY) / Math.max(0.0001, dt)
+      const carouselVelY = Math.max(-10.0, Math.min(10.0, rawCarouselVelY))
+      const rawCarouselAccY = (carouselVelY - prevCarouselVelocityY) / Math.max(0.0001, dt)
+      const carouselAccY = Math.max(-14.0, Math.min(14.0, rawCarouselAccY))
+      prevCarouselRotY = currentCarouselRotY
+      prevCarouselVelocityY = carouselVelY
+
+      // Fixed-timestep substeps for stable Verlet / Symplectic Euler Cloth Simulation
+      if (garmentsPhysicsList.length > 0) {
+        const subSteps = 3
+        const subDt = dt / subSteps
+
+        for (let s = 0; s < subSteps; s++) {
+          // 1. Compute forces, cloth inertia & neighbour collisions
+          for (let i = 0; i < garmentsPhysicsList.length; i++) {
+            const g = garmentsPhysicsList[i]
+            if (!g) continue
+            const leftG = garmentsPhysicsList[g.leftIdx]
+            const rightG = garmentsPhysicsList[g.rightIdx]
+            if (!leftG || !rightG) continue
+
+            // Inertial torque: lagging behind carousel rotational acceleration
+            const inertialTorque = Math.max(-3.5, Math.min(3.5, carouselAccY * 0.35))
+
+            // Centrifugal outward force
+            const centrifugalForce = Math.min(2.5, carouselVelY * carouselVelY * 0.022)
+
+            // Gravity compound pendulum restoring torque
+            const gravityTorque = -g.stiffness * Math.sin(g.angle)
+
+            // Aerodynamic drag opposing velocity relative to rotating air
+            const relVel = g.velocity + carouselVelY * 0.35
+            const dragTorque = -0.5 * (g.isTee ? 2.4 : 1.2) * relVel * Math.abs(relVel)
+
+            // Cloth-to-cloth collision detection between neighbouring garments
+            const hContact = g.length * 0.65
+            const distLeft = g.restDistLeft + hContact * (g.angle - leftG.angle)
+            const distRight = g.restDistRight + hContact * (rightG.angle - g.angle)
+
+            // Contact thickness threshold
+            const threshLeft = (g.isTee ? 6.5 : 8.0) + (leftG.isTee ? 6.5 : 8.0)
+            const threshRight = (g.isTee ? 6.5 : 8.0) + (rightG.isTee ? 6.5 : 8.0)
+
+            let collTorqueLeft = 0
+            let collTorqueRight = 0
+            let compLeft = 0
+            let compRight = 0
+
+            if (distLeft < threshLeft) {
+              const pen = Math.max(0.0, threshLeft - distLeft)
+              compLeft = Math.min(4.0, pen)
+              const relV = leftG.velocity - g.velocity
+              const fContact = 35.0 * compLeft + 4.0 * relV
+              collTorqueLeft = Math.max(0, Math.min(20.0, fContact / g.mass))
+            }
+
+            if (distRight < threshRight) {
+              const pen = Math.max(0.0, threshRight - distRight)
+              compRight = Math.min(4.0, pen)
+              const relV = rightG.velocity - g.velocity
+              const fContact = 35.0 * compRight + 4.0 * relV
+              collTorqueRight = Math.max(0, Math.min(20.0, fContact / g.mass))
+            }
+
+            g.compression = compLeft + compRight
+
+            // Net tangential angular acceleration
+            const totalTorque =
+              gravityTorque +
+              inertialTorque +
+              dragTorque +
+              (collTorqueLeft - collTorqueRight)
+
+            g.accel = Math.max(-40.0, Math.min(40.0, totalTorque / g.mass))
+
+            // Radial tilt acceleration (centrifugal flare vs gravity restoring)
+            g.radialAccel = (centrifugalForce - g.stiffness * 1.5 * g.radialTilt) / g.mass
+          }
+
+          // 2. Symplectic Euler integration
+          for (let i = 0; i < garmentsPhysicsList.length; i++) {
+            const g = garmentsPhysicsList[i]
+            g.velocity = Math.max(-3.5, Math.min(3.5, (g.velocity + g.accel * subDt) * g.damping))
+            g.angle += g.velocity * subDt
+            g.angle = Math.max(-0.45, Math.min(0.45, g.angle))
+
+            g.radialVel = Math.max(-2.5, Math.min(2.5, (g.radialVel + g.radialAccel * subDt) * g.damping))
+            g.radialTilt += g.radialVel * subDt
+            g.radialTilt = Math.max(0.0, Math.min(0.25, g.radialTilt))
+          }
+        }
+
+        // 3. Apply physical orientations and GPU vertex shader deformations
+        const simTime = currentTime * 0.001
+        for (let i = 0; i < garmentsPhysicsList.length; i++) {
+          const g = garmentsPhysicsList[i]
+          if (!g || !g.group || !g.baseQuaternion) continue
+
+          // Smooth physical swing around radial axis & centrifugal flare
+          const qSwing = new THREE.Quaternion().setFromAxisAngle(g.radialDir, g.angle)
+          const qFlare = new THREE.Quaternion().setFromAxisAngle(g.tangentDir, g.radialTilt)
+          g.group.quaternion.copy(qSwing).multiply(qFlare).multiply(g.baseQuaternion)
+          g.group.position.copy(g.basePosition)
+
+          // Update GPU vertex shader uniforms
+          if (g.clothParams) {
+            // x: lag curvature bend, y: dynamic ripple fold amplitude, z: time, w: collision compression
+            g.clothParams.value.set(
+              g.angle * (g.isTee ? 0.25 : 0.15) + g.velocity * 0.08,
+              Math.min(0.18, Math.abs(g.velocity) * (g.isTee ? 0.25 : 0.12) + 0.02),
+              simTime,
+              Math.min(0.25, g.compression * 0.04)
+            )
+          }
         }
       }
 
