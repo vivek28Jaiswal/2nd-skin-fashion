@@ -226,6 +226,8 @@ function ModelViewer({
           if (child.isMesh) {
             child.castShadow = true
             child.receiveShadow = true
+            const name = (child.name || '').toLowerCase()
+            const parentName = (child.parent?.name || '').toLowerCase()
             const isRack =
               name.startsWith('line') ||
               name.startsWith('circle') ||
