@@ -38,9 +38,13 @@ export default function App() {
     if (!found && (nameLower.includes('tee') || nameLower.includes('shirt'))) {
       found = PRODUCTS.find((p) => p.id === 'center-tshirt')
     }
+    // Fallback: partial name match or default fallback
+    if (!found) {
+      found = PRODUCTS.find((p) => p.name.toLowerCase().includes(nameLower) || nameLower.includes(p.name.toLowerCase())) || PRODUCTS[2]
+    }
     if (found) {
       const idx = PRODUCTS.indexOf(found)
-      setActiveIndex(idx)
+      if (idx !== -1) setActiveIndex(idx)
       setSelectedProduct(found)
       if (found.targetAngle !== undefined) {
         setTargetAngle(found.targetAngle)
@@ -57,7 +61,12 @@ export default function App() {
       if (product.targetAngle !== undefined) {
         setTargetAngle(product.targetAngle)
       }
-      setIsPanelOpen(true)
+      // On phone / responsive screens (< 1024px), keep panel closed during dialer navigation;
+      // sidepanel only opens when customer directly clicks a garment on the rack.
+      const isResponsive = typeof window !== 'undefined' && window.innerWidth < 1024
+      if (!isResponsive) {
+        setIsPanelOpen(true)
+      }
     }
   }, [])
 

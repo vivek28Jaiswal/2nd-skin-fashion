@@ -143,7 +143,7 @@ function ProductDialer({ onSelectProduct, activeIndex: externalIndex, onHoverPro
       onPointerDown={onPointerDown}
     >
       {/* 1. Infinite Products Carousel Row (EXACTLY 5 images visible, rest hidden) */}
-      <div className="relative w-[312px] h-[72px] sm:h-[80px] flex items-end justify-center overflow-hidden cursor-grab active:cursor-grabbing pb-1">
+      <div className="relative w-[232px] sm:w-[312px] h-[68px] sm:h-[80px] flex items-end justify-center overflow-hidden cursor-grab active:cursor-grabbing pb-1">
         {visibleSlots.map(({ slot, prod, prodIdx, dist, xPos }) => {
           // Center element:
           // - slightly larger (scale 1.08)
@@ -195,8 +195,8 @@ function ProductDialer({ onSelectProduct, activeIndex: externalIndex, onHoverPro
               }}
               className="flex flex-col items-center justify-end cursor-pointer"
             >
-              {/* Compact Image Container (w-11 h-11 to w-13 h-13) with NO background gradient */}
-              <div className="w-11 h-11 sm:w-13 sm:h-13 flex items-center justify-center">
+              {/* Compact Image Container (w-10 h-10 on mobile to w-13 h-13 on desktop) with NO background gradient */}
+              <div className="w-10 h-10 sm:w-13 sm:h-13 flex items-center justify-center">
                 <img
                   src={prod.img}
                   alt={prod.name}
@@ -212,7 +212,7 @@ function ProductDialer({ onSelectProduct, activeIndex: externalIndex, onHoverPro
 
       {/* 2. Interactive Line Dialer (Exact width and alignment matching the 5 images row) */}
       <div
-        className="relative flex items-center justify-center w-[312px] h-8 overflow-hidden cursor-grab active:cursor-grabbing mt-1.5"
+        className="relative flex items-center justify-center w-[232px] sm:w-[312px] h-8 overflow-hidden cursor-grab active:cursor-grabbing mt-1.5"
         style={{
           maskImage:
             'linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',

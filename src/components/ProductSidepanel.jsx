@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from 'react'
+import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { X, Heart, Ruler, Minus, Plus } from '@phosphor-icons/react'
 import OfferMarquee from './OfferMarquee.jsx'
 import ScrambleText from './ScrambleText.jsx'
@@ -13,6 +13,32 @@ function ProductSidepanel({
   const [quantity, setQuantity] = useState(1)
   const [activeThumb, setActiveThumb] = useState(0)
   const [isWishlisted, setIsWishlisted] = useState(false)
+  const [backdropInteractive, setBackdropInteractive] = useState(false)
+  const openTimeRef = useRef(0)
+
+  // Track when panel opens and enable backdrop pointer-events only after animation settles (600ms)
+  useEffect(() => {
+    if (isOpen) {
+      openTimeRef.current = performance.now()
+      const timer = setTimeout(() => {
+        setBackdropInteractive(true)
+      }, 600)
+      return () => clearTimeout(timer)
+    } else {
+      setBackdropInteractive(false)
+    }
+  }, [isOpen])
+
+  // Prevents mobile touch ghost-clicks from immediately closing the drawer on open
+  const handleSafeClose = useCallback((e) => {
+    if (e) {
+      e.stopPropagation?.()
+    }
+    if (performance.now() - openTimeRef.current < 600) {
+      return
+    }
+    if (onClose) onClose()
+  }, [onClose])
 
   // Sync state when product changes
   useEffect(() => {
@@ -38,11 +64,13 @@ function ProductSidepanel({
 
   return (
     <>
-      {/* Optional mobile overlay backdrop */}
+      {/* Optional mobile overlay backdrop (non-interactive during 600ms opening slide to prevent ghost-click dismiss) */}
       {isOpen && (
         <div
-          onClick={onClose}
-          className="fixed inset-0 bg-black/40 z-30 lg:hidden transition-opacity duration-300"
+          onClick={handleSafeClose}
+          className={`fixed inset-0 bg-black/40 z-30 lg:hidden transition-opacity duration-300 ${
+            backdropInteractive ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+          }`}
           aria-hidden="true"
         />
       )}
@@ -55,7 +83,14 @@ function ProductSidepanel({
       >
         {/* Left Vertical Dividing Strip: The Orange Offer Marquee with toggle arrow */}
         <div
-          onClick={onToggle || onClose}
+          onClick={(e) => {
+            e.stopPropagation?.()
+            if (!isOpen) {
+              if (onToggle) onToggle()
+            } else {
+              handleSafeClose(e)
+            }
+          }}
           className="relative h-full w-[24px] sm:w-[26px] shrink-0 bg-[#F15001] cursor-pointer hover:brightness-105 active:brightness-95 transition-all flex justify-center z-50 select-none shadow-[-6px_0_25px_rgba(0,0,0,0.4)] group"
           title={isOpen ? 'Click to close panel' : 'Click to view product'}
         >
@@ -68,7 +103,7 @@ function ProductSidepanel({
           <div className="relative w-full h-[54vh] sm:h-[56vh] min-h-[320px] bg-[#EEEEEE] flex items-center justify-center p-6 border-b border-gray-200/60">
             {/* Close CTA Button at Top-Left (Aligned with top thumbnails on Y-axis) */}
             <button
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="absolute top-6 left-4 sm:left-6 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 hover:bg-white text-neutral-800 flex items-center justify-center shadow-xs hover:shadow-sm cursor-pointer transition-all hover:scale-105 active:scale-95 group"
               aria-label="Close panel"
               title="Close panel"
