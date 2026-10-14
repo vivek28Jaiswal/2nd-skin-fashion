@@ -14,9 +14,16 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
   const onHoverGarmentRef = useRef(onHoverGarment)
   const onSelectGarmentRef = useRef(onSelectGarment)
   const isPanelOpenRef = useRef(isPanelOpen)
+  const syncBufferSizeRef = useRef(null)
 
   useEffect(() => {
     isPanelOpenRef.current = isPanelOpen
+    const timer = setTimeout(() => {
+      if (syncBufferSizeRef.current) {
+        syncBufferSizeRef.current()
+      }
+    }, 520)
+    return () => clearTimeout(timer)
   }, [isPanelOpen])
 
   useEffect(() => {
@@ -51,12 +58,18 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
     // Renderer setup
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setSize(container.clientWidth, container.clientHeight)
+    renderer.setSize(container.clientWidth, container.clientHeight, false)
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 0.94
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFShadowMap
+    renderer.domElement.style.width = '100%'
+    renderer.domElement.style.height = '100%'
+    renderer.domElement.style.display = 'block'
+    renderer.domElement.style.position = 'absolute'
+    renderer.domElement.style.top = '0'
+    renderer.domElement.style.left = '0'
     container.appendChild(renderer.domElement)
 
     // Studio Environment for realistic metallic silver reflections on rack
@@ -534,16 +547,35 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
     window.addEventListener('pointercancel', onPointerUp)
     container.addEventListener('pointerleave', onPointerLeave)
 
-    // Resize handler
-    const handleResize = () => {
+    // Smooth, flicker-free resize handling (avoids WebGL buffer destruction on every animation frame)
+    let resizeTimer = null
+    const syncBufferSize = () => {
       if (!container) return
       const width = container.clientWidth
       const height = container.clientHeight
       if (width === 0 || height === 0) return
       camera.aspect = width / height
       camera.updateProjectionMatrix()
-      renderer.setSize(width, height)
+      renderer.setSize(width, height, false)
+      renderer.render(scene, camera)
     }
+    syncBufferSizeRef.current = syncBufferSize
+
+    const handleResize = () => {
+      if (!container) return
+      const width = container.clientWidth
+      const height = container.clientHeight
+      if (width === 0 || height === 0) return
+
+      // Smoothly update aspect ratio on CPU matrix without destroying WebGL drawing buffer
+      camera.aspect = width / height
+      camera.updateProjectionMatrix()
+
+      // Debounce the heavy buffer reallocation until width transition settles
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(syncBufferSize, 150)
+    }
+
     window.addEventListener('resize', handleResize)
     const resizeObserver = new ResizeObserver(() => handleResize())
     resizeObserver.observe(container)
@@ -554,14 +586,14 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate)
 
-      // Continuous 60fps canvas sync during smooth width transitions
+      // Continuous 60fps aspect ratio sync during smooth width transitions (zero buffer clearing)
       const curW = container.clientWidth
       const curH = container.clientHeight
       if (curW > 0 && curH > 0) {
-        if (Math.abs(renderer.domElement.clientWidth - curW) > 1 || Math.abs(renderer.domElement.clientHeight - curH) > 1) {
-          camera.aspect = curW / curH
+        const aspect = curW / curH
+        if (Math.abs(camera.aspect - aspect) > 0.001) {
+          camera.aspect = aspect
           camera.updateProjectionMatrix()
-          renderer.setSize(curW, curH, false)
         }
       }
 
@@ -779,6 +811,8 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
 
     // Cleanup
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      syncBufferSizeRef.current = null
       container.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
@@ -804,7 +838,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
 
   return (
     <div
-      className="relative w-full h-full flex items-center justify-center select-none"
+      className="relative w-full h-full flex items-center justify-center select-none overflow-hidden"
       style={{ touchAction: 'none' }}
     >
       {loading && (
@@ -814,7 +848,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
       )}
       <div
         ref={containerRef}
-        className="w-full h-full"
+        className="relative w-full h-full overflow-hidden"
         style={{ touchAction: 'none' }}
       />
     </div>

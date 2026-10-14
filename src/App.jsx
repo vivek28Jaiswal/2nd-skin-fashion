@@ -57,13 +57,13 @@ export default function App() {
 
       {/* Main 3D Rack & Interactive Scene Area */}
       <div
-        className={`relative h-full flex flex-col items-center justify-center transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`relative h-full flex flex-col items-center justify-center transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden ${
           isPanelOpen
             ? 'w-full lg:w-1/2'
             : 'w-full'
         }`}
       >
-        <main className="relative w-full h-full flex items-center justify-center">
+        <main className="relative w-full h-full flex items-center justify-center overflow-hidden">
           <ModelViewer
             targetAngle={targetAngle}
             onHoverGarment={setHoveredName}
