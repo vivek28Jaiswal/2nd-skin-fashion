@@ -12,6 +12,13 @@ export default function App() {
   const [hoveredName, setHoveredName] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(PRODUCTS[2]) // Default: Lucky Boxy-Fit T-Shirt
   const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const [spinTrigger, setSpinTrigger] = useState(0)
+
+  // Triggered when customer clicks "PRODUCTS" in the top navbar
+  const handleProductsClick = () => {
+    setSpinTrigger((prev) => prev + 1)
+    setIsPanelOpen(false)
+  }
 
   // Triggered when customer clicks any garment directly on the 3D rack
   const handleSelectGarmentFromRack = (garmentName) => {
@@ -53,7 +60,7 @@ export default function App() {
   return (
     <div className="relative h-screen w-screen bg-black text-white overflow-hidden select-none flex">
       {/* Top Header Navigation */}
-      <Navbar />
+      <Navbar onProductsClick={handleProductsClick} />
 
       {/* Main 3D Rack & Interactive Scene Area */}
       <div
@@ -69,6 +76,7 @@ export default function App() {
             onHoverGarment={setHoveredName}
             onSelectGarment={handleSelectGarmentFromRack}
             isPanelOpen={isPanelOpen}
+            spinTrigger={spinTrigger}
           />
         </main>
 

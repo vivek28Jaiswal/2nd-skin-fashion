@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import gsap from 'gsap'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { createBrushedTexture, createRackMaterials, createClothingMaterials } from '../three/materials.js'
@@ -7,7 +8,7 @@ import { applyClothShader } from '../three/clothShader.js'
 import { VerletClothSystem } from '../three/verletCloth.js'
 import { createFloorReflector } from '../three/floorReflector.js'
 
-export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false }) {
+export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false, spinTrigger = 0 }) {
   const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const targetAngleRef = useRef(null)
@@ -15,6 +16,13 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
   const onSelectGarmentRef = useRef(onSelectGarment)
   const isPanelOpenRef = useRef(isPanelOpen)
   const syncBufferSizeRef = useRef(null)
+  const spinRackRef = useRef(null)
+
+  useEffect(() => {
+    if (spinTrigger > 0 && spinRackRef.current) {
+      spinRackRef.current()
+    }
+  }, [spinTrigger])
 
   useEffect(() => {
     isPanelOpenRef.current = isPanelOpen
@@ -146,6 +154,20 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
 
     const carouselGroup = new THREE.Group()
     carouselGroup.name = 'rotating_carousel'
+
+    // 360-degree showcase rack spin when "PRODUCTS" is clicked
+    const spinRack = () => {
+      if (!carouselGroup) return
+      targetAngleRef.current = null
+      spinVelocity = 0
+      gsap.to(carouselGroup.rotation, {
+        y: '-=' + Math.PI * 2,
+        duration: 2.2,
+        ease: 'power2.out',
+        overwrite: 'auto',
+      })
+    }
+    spinRackRef.current = spinRack
 
     const raycaster = new THREE.Raycaster()
     const mouse = new THREE.Vector2()
@@ -813,6 +835,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
     return () => {
       if (resizeTimer) clearTimeout(resizeTimer)
       syncBufferSizeRef.current = null
+      spinRackRef.current = null
       container.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
