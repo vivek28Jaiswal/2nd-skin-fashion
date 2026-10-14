@@ -4,7 +4,7 @@ import gsap from 'gsap'
 const MARQUEE_UNIT = '10% OFF ON FIRST ORDER ~ '
 const MARQUEE_CONTENT = MARQUEE_UNIT.repeat(20)
 
-export default function OfferMarquee() {
+export default function OfferMarquee({ className = '' }) {
   const marqueeRef = useRef(null)
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export default function OfferMarquee() {
   }, [])
 
   return (
-    <aside className="fixed top-0 right-0 h-full w-[24px] sm:w-[26px] bg-[#F15001] z-50 overflow-hidden flex justify-center">
+    <aside className={`relative h-full w-full bg-[#F15001] overflow-hidden flex justify-center select-none ${className}`}>
       <div
         ref={marqueeRef}
         className="flex flex-col will-change-transform select-none"

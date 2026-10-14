@@ -5,16 +5,27 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { createBrushedTexture, createRackMaterials, createClothingMaterials } from '../three/materials.js'
 import { applyClothShader } from '../three/clothShader.js'
 import { VerletClothSystem } from '../three/verletCloth.js'
+import { createFloorReflector } from '../three/floorReflector.js'
 
-export default function ModelViewer({ targetAngle, onHoverGarment }) {
+export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false }) {
   const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const targetAngleRef = useRef(null)
   const onHoverGarmentRef = useRef(onHoverGarment)
+  const onSelectGarmentRef = useRef(onSelectGarment)
+  const isPanelOpenRef = useRef(isPanelOpen)
+
+  useEffect(() => {
+    isPanelOpenRef.current = isPanelOpen
+  }, [isPanelOpen])
 
   useEffect(() => {
     onHoverGarmentRef.current = onHoverGarment
   }, [onHoverGarment])
+
+  useEffect(() => {
+    onSelectGarmentRef.current = onSelectGarment
+  }, [onSelectGarment])
 
   useEffect(() => {
     if (targetAngle !== undefined && targetAngle !== null) {
@@ -118,6 +129,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
     let activeHitWorldPoint = null
     let prevMouseHit = null
     let activeHitGarment = null
+    let floorReflector = null
 
     const carouselGroup = new THREE.Group()
     carouselGroup.name = 'rotating_carousel'
@@ -341,6 +353,16 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
         camera.position.set(1.62, 53.13, 247.46)
         camera.lookAt(0, -11.8, 0)
 
+        // Glossy floor reflector matching dark mirror falloff
+        const groupBox = new THREE.Box3().setFromObject(group)
+        const floorY = groupBox.min.y
+        floorReflector = createFloorReflector({
+          floorY,
+          size: 380,
+          intensity: 0.37,
+        })
+        scene.add(floorReflector)
+
         prevCarouselRotY = carouselGroup.rotation.y
         lastTime = performance.now()
         setLoading(false)
@@ -359,6 +381,10 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
     }
 
+    let pointerStartX = 0
+    let pointerStartY = 0
+    let hasDragged = false
+
     const onPointerDown = (e) => {
       updateMouseCoords(e)
       raycaster.setFromCamera(mouse, camera)
@@ -366,6 +392,9 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
 
       dragMode = hits.length > 0 ? 'carousel' : 'carousel'
       isDragging = true
+      hasDragged = false
+      pointerStartX = e.clientX
+      pointerStartY = e.clientY
       lastPointerX = e.clientX
       lastPointerY = e.clientY
       spinVelocity = 0
@@ -381,13 +410,23 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
           dragMode = null
           return
         }
+
+        if (Math.hypot(e.clientX - pointerStartX, e.clientY - pointerStartY) > 5) {
+          hasDragged = true
+        }
+
         const deltaX = e.clientX - lastPointerX
         lastPointerX = e.clientX
         lastPointerY = e.clientY
 
-        const speed = 0.007
-        carouselGroup.rotation.y += deltaX * speed
-        spinVelocity = deltaX * speed
+        const speed = 0.0032
+        const maxDelta = 0.030
+        const rotStep = Math.max(-maxDelta, Math.min(maxDelta, deltaX * speed))
+        carouselGroup.rotation.y += rotStep
+
+        // Smooth spin velocity with rolling filter so mouse flick doesn't jerk violently
+        spinVelocity = spinVelocity * 0.40 + rotStep * 0.60
+        spinVelocity = Math.max(-maxDelta, Math.min(maxDelta, spinVelocity))
       } else {
         // Hover state detection, front garment raycasting & Verlet cloth mouse interaction
         raycaster.setFromCamera(mouse, camera)
@@ -441,8 +480,27 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
       }
     }
 
-    const onPointerUp = () => {
+    const onPointerUp = (e) => {
+      // If user clicked without dragging, trigger garment selection
+      if (!hasDragged && onSelectGarmentRef.current) {
+        updateMouseCoords(e)
+        raycaster.setFromCamera(mouse, camera)
+        const hits = raycaster.intersectObjects(interactiveObjects, true)
+        if (hits.length > 0) {
+          for (let h = 0; h < Math.min(3, hits.length); h++) {
+            const hit = hits[h]
+            const obj = hit.object
+            const name = obj.userData?.garmentName || obj.parent?.userData?.garmentName
+            if (name) {
+              onSelectGarmentRef.current(name)
+              break
+            }
+          }
+        }
+      }
+
       isDragging = false
+      hasDragged = false
       dragMode = null
       prevMouseHit = null
       activeMouseHit = null
@@ -481,17 +539,35 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
       if (!container) return
       const width = container.clientWidth
       const height = container.clientHeight
+      if (width === 0 || height === 0) return
       camera.aspect = width / height
       camera.updateProjectionMatrix()
       renderer.setSize(width, height)
     }
     window.addEventListener('resize', handleResize)
+    const resizeObserver = new ResizeObserver(() => handleResize())
+    resizeObserver.observe(container)
 
     // Physics-driven render loop (Smooth fabric inertia & settled rest state)
     let animationFrameId
     let targetSpringVelocity = 0
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate)
+
+      // Continuous 60fps canvas sync during smooth width transitions
+      const curW = container.clientWidth
+      const curH = container.clientHeight
+      if (curW > 0 && curH > 0) {
+        if (Math.abs(renderer.domElement.clientWidth - curW) > 1 || Math.abs(renderer.domElement.clientHeight - curH) > 1) {
+          camera.aspect = curW / curH
+          camera.updateProjectionMatrix()
+          renderer.setSize(curW, curH, false)
+        }
+      }
+
+      // Smooth camera dolly zoom between full-screen and half-screen split
+      const targetCamZ = isPanelOpenRef.current ? 268.0 : 247.46
+      camera.position.z += (targetCamZ - camera.position.z) * 0.08
 
       const currentTime = performance.now()
       const dt = Math.min((currentTime - lastTime) / 1000, 0.04)
@@ -503,9 +579,10 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
           const diff = targetAngleRef.current - carouselGroup.rotation.y
           const wrappedDiff = Math.atan2(Math.sin(diff), Math.cos(diff))
 
-          const springK = 38.0
-          const springDamp = 0.91
+          const springK = 22.0
+          const springDamp = 0.935
           targetSpringVelocity = (targetSpringVelocity + wrappedDiff * springK * dt) * springDamp
+          targetSpringVelocity = Math.max(-1.8, Math.min(1.8, targetSpringVelocity))
           carouselGroup.rotation.y += targetSpringVelocity * dt
           spinVelocity = 0
 
@@ -515,9 +592,9 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
             targetSpringVelocity = 0
             spinVelocity = 0
           }
-        } else if (Math.abs(spinVelocity) > 0.00015) {
+        } else if (Math.abs(spinVelocity) > 0.0001) {
           carouselGroup.rotation.y += spinVelocity
-          spinVelocity *= 0.88
+          spinVelocity *= 0.962 // Smooth gradual coasting deceleration
         } else {
           spinVelocity = 0
         }
@@ -529,9 +606,9 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
       // Compute carousel rotational acceleration and velocity
       const currentCarouselRotY = carouselGroup.rotation.y
       const rawCarouselVelY = (currentCarouselRotY - prevCarouselRotY) / Math.max(0.0001, dt)
-      const carouselVelY = Math.max(-12.0, Math.min(12.0, rawCarouselVelY))
+      const carouselVelY = Math.max(-4.5, Math.min(4.5, rawCarouselVelY))
       const rawCarouselAccY = (carouselVelY - prevCarouselVelocityY) / Math.max(0.0001, dt)
-      const carouselAccY = Math.max(-18.0, Math.min(18.0, rawCarouselAccY))
+      const carouselAccY = Math.max(-10.0, Math.min(10.0, rawCarouselAccY))
       prevCarouselRotY = currentCarouselRotY
       prevCarouselVelocityY = carouselVelY
 
@@ -546,69 +623,59 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
             const g = garmentsPhysicsList[i]
             if (!g || !g.group) continue
 
-            // 1. Tangential rotational inertia from circular rack acceleration and angular velocity
-            const inertialForce = -(carouselAccY * 0.038 + carouselVelY * 0.17)
+            // 1. Aerodynamic drag and rotational inertia
+            const vTangential = carouselVelY * 0.45
+            const airPush = -Math.sign(vTangential) * Math.pow(Math.abs(vTangential), 1.15) * (g.isTee ? 2.4 : 1.6)
+            const inertialKick = -carouselAccY * (g.isTee ? 0.35 : 0.22)
+            const rackForce = airPush + inertialKick
 
-            if (isRackMoving) {
-              // Main body pendulum dynamics
-              const bodyGravity = -22.0 * Math.sin(g.angle)
-              const vRel = g.velocity + carouselVelY * 0.14
-              const bodyAirDrag = -0.5 * g.airDrag * vRel * Math.abs(vRel) - g.velocity * 5.5
-              const bodyAcc = (bodyGravity + bodyAirDrag) / g.mass + inertialForce * (1.0 / g.mass)
-              g.velocity += bodyAcc * subDt
-              g.velocity *= Math.pow(0.965, subDt * 60)
-              g.angle += g.velocity * subDt
-              g.angle = Math.max(-0.46, Math.min(0.46, g.angle))
+            // Main body pendulum dynamics (natural harmonic sway & gradual settling)
+            const bodyGravity = -16.0 * Math.sin(g.angle)
+            const bodyDamping = -g.velocity * (g.isTee ? 1.45 : 1.95)
+            const vRel = g.velocity + carouselVelY * 0.18
+            const bodyAirDrag = -0.35 * g.airDrag * vRel * Math.abs(vRel)
+            const bodyAcc = (bodyGravity + bodyDamping + bodyAirDrag + rackForce) / g.mass
+            g.velocity += bodyAcc * subDt
+            g.velocity *= Math.pow(0.988, subDt * 60)
+            g.angle += g.velocity * subDt
+            g.angle = Math.max(-0.45, Math.min(0.45, g.angle))
 
-              // Secondary trailing hem momentum (coupled through fabric bending constraint)
-              const hemBend = (g.angle - g.hemAngle) * (g.isTee ? 38.0 : 48.0)
-              const hemGravity = -24.0 * Math.sin(g.hemAngle)
-              const hemAirDrag = -1.5 * (g.hemVel + carouselVelY * 0.16)
-              const hemAcc = (hemBend + hemGravity + hemAirDrag) / (g.mass * 0.70) + inertialForce * 1.35
-              g.hemVel += hemAcc * subDt
-              g.hemVel *= Math.pow(0.955, subDt * 60)
-              g.hemAngle += g.hemVel * subDt
-              g.hemAngle = Math.max(-0.62, Math.min(0.62, g.hemAngle))
+            // Secondary trailing hem momentum (coupled through fabric bending constraint)
+            const hemBend = (g.angle - g.hemAngle) * (g.isTee ? 28.0 : 36.0)
+            const hemGravity = -18.0 * Math.sin(g.hemAngle)
+            const hemDamping = -g.hemVel * (g.isTee ? 1.55 : 2.1)
+            const hemAirDrag = -0.5 * (g.hemVel + carouselVelY * 0.20)
+            const hemAcc = (hemBend + hemGravity + hemDamping + hemAirDrag + rackForce * 1.35) / (g.mass * 0.70)
+            g.hemVel += hemAcc * subDt
+            g.hemVel *= Math.pow(0.982, subDt * 60)
+            g.hemAngle += g.hemVel * subDt
+            g.hemAngle = Math.max(-0.60, Math.min(0.60, g.hemAngle))
 
-              // Sleeve independent flutter reaction (T-shirts)
-              if (g.isTee) {
-                const flutter = Math.sin(currentTime * 0.02 + i * 1.8) * Math.abs(carouselVelY) * 0.035
-                const sleeveBend = (g.angle - g.sleeveAngle) * 52.0
-                const sleeveGravity = -26.0 * Math.sin(g.sleeveAngle)
-                const sleeveAcc = (sleeveBend + sleeveGravity) / 0.20 + inertialForce * 1.5 + flutter * 24.0
-                g.sleeveVel += sleeveAcc * subDt
-                g.sleeveVel *= Math.pow(0.945, subDt * 60)
-                g.sleeveAngle += g.sleeveVel * subDt
-              }
+            // Sleeve independent flutter reaction (T-shirts)
+            if (g.isTee) {
+              const flutter = Math.sin(currentTime * 0.015 + i * 1.8) * Math.abs(carouselVelY) * 0.045
+              const sleeveBend = (g.angle - g.sleeveAngle) * 42.0
+              const sleeveGravity = -20.0 * Math.sin(g.sleeveAngle)
+              const sleeveDamping = -g.sleeveVel * 1.8
+              const sleeveAcc = (sleeveBend + sleeveGravity + sleeveDamping + rackForce * 1.5 + flutter * 26.0) / 0.20
+              g.sleeveVel += sleeveAcc * subDt
+              g.sleeveVel *= Math.pow(0.978, subDt * 60)
+              g.sleeveAngle += g.sleeveVel * subDt
+            }
 
-              // Centrifugal radial flare under spinning
-              const targetFlare = Math.min(0.12, carouselVelY * carouselVelY * 0.0035)
-              g.radialTilt += (targetFlare - g.radialTilt) * Math.min(1.0, subDt * 8.0)
-            } else {
-              // Natural harmonic settling when rack has stopped (physical decay, zero jitter)
-              if (Math.abs(g.angle) > 0.0006 || Math.abs(g.velocity) > 0.001 || Math.abs(g.hemAngle) > 0.0006) {
-                // Free damped pendulum decay
-                const bodyGravity = -26.0 * Math.sin(g.angle)
-                const bodyDamp = -g.velocity * 8.0
-                g.velocity += (bodyGravity + bodyDamp) / g.mass * subDt
-                g.angle += g.velocity * subDt
+            // Centrifugal radial flare under spinning
+            const targetFlare = Math.min(0.12, carouselVelY * carouselVelY * 0.005)
+            g.radialTilt += (targetFlare - g.radialTilt) * Math.min(1.0, subDt * 4.5)
 
-                const hemBend = (g.angle - g.hemAngle) * 42.0
-                const hemGravity = -28.0 * Math.sin(g.hemAngle)
-                const hemDamp = -g.hemVel * 9.0
-                g.hemVel += (hemBend + hemGravity + hemDamp) / (g.mass * 0.70) * subDt
-                g.hemAngle += g.hemVel * subDt
-
-                if (g.isTee) {
-                  const sleeveBend = (g.angle - g.sleeveAngle) * 56.0
-                  const sleeveDamp = -g.sleeveVel * 10.0
-                  g.sleeveVel += (sleeveBend + sleeveDamp) / 0.20 * subDt
-                  g.sleeveAngle += g.sleeveVel * subDt
-                }
-
-                g.radialTilt *= 0.90
-              } else {
-                // Settle completely rock-solid into perfect physical gravity rest pose
+            // Natural rest pose settling when rack is stationary and oscillation has naturally decayed
+            const isRackStationary = Math.abs(carouselVelY) < 0.0001 && Math.abs(carouselAccY) < 0.0005
+            if (isRackStationary) {
+              if (
+                Math.abs(g.angle) < 0.0004 &&
+                Math.abs(g.velocity) < 0.0008 &&
+                Math.abs(g.hemAngle) < 0.0004 &&
+                Math.abs(g.radialTilt) < 0.0005
+              ) {
                 g.angle = 0
                 g.velocity = 0
                 g.hemAngle = 0
@@ -718,10 +785,16 @@ export default function ModelViewer({ targetAngle, onHoverGarment }) {
       window.removeEventListener('pointercancel', onPointerUp)
       container.removeEventListener('pointerleave', onPointerLeave)
       window.removeEventListener('resize', handleResize)
+      resizeObserver.disconnect()
       cancelAnimationFrame(animationFrameId)
       garmentsPhysicsList.forEach((g) => {
         if (g.verletCloth) g.verletCloth.dispose()
       })
+      if (floorReflector) {
+        scene.remove(floorReflector)
+        if (floorReflector.geometry) floorReflector.geometry.dispose()
+        if (typeof floorReflector.dispose === 'function') floorReflector.dispose()
+      }
       renderer.dispose()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
