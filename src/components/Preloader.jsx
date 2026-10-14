@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import gsap from 'gsap'
 import orangeTee from '../assets/imgs-transparent/center-thsirt.png'
 import blueTee from '../assets/imgs-transparent/blue-tshirt.png'
@@ -15,7 +15,7 @@ const PRELOADER_PRODUCTS = [
   blackHalfSleeve,
 ]
 
-export default function Preloader({ isModelReady = true, onPreloaderComplete }) {
+function Preloader({ isModelReady = true, onPreloaderComplete }) {
   const [currentImgIndex, setCurrentImgIndex] = useState(0)
   const [percent, setPercent] = useState(0)
   const [isCurtainActive, setIsCurtainActive] = useState(false)
@@ -43,6 +43,7 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
 
   // 2. Smooth percentage count from 0% to 100% over 3.2 seconds
   useEffect(() => {
+    let pollTimer = null
     const tween = gsap.to(progressRef.current, {
       value: 100,
       duration: 3.2,
@@ -67,9 +68,10 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
           triggerCurtain()
         } else {
           // Poll until 3D homesec is ready
-          const pollTimer = setInterval(() => {
+          pollTimer = setInterval(() => {
             if (isModelReadyRef.current) {
               clearInterval(pollTimer)
+              pollTimer = null
               triggerCurtain()
             }
           }, 30)
@@ -79,6 +81,7 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
 
     return () => {
       tween.kill()
+      if (pollTimer) clearInterval(pollTimer)
     }
   }, [])
 
@@ -106,6 +109,7 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
                 key={idx}
                 src={imgSrc}
                 alt={`Garment preview ${idx}`}
+                decoding="async"
                 className={`absolute max-w-full max-h-full object-contain drop-shadow-sm select-none will-change-transform ${
                   currentImgIndex === idx
                     ? 'opacity-100 z-10 visible'
@@ -135,3 +139,5 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
     </>
   )
 }
+
+export default memo(Preloader)

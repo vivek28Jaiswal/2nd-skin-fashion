@@ -126,7 +126,7 @@ export function createFloorReflector({
     textureWidth: 1024,
     textureHeight: 1024,
     color: 0x000000,
-    multisample: 4,
+    multisample: 0,
     shader: customShader,
   })
 
@@ -134,6 +134,16 @@ export function createFloorReflector({
   reflector.rotation.x = -Math.PI / 2
   reflector.position.set(0, floorY - 0.02, 0)
   reflector.material.depthWrite = false
+
+  // Resource cleanup helper to avoid WebGL render target leaks
+  const originalDispose = reflector.dispose ? reflector.dispose.bind(reflector) : null
+  reflector.dispose = () => {
+    if (originalDispose) originalDispose()
+    geometry.dispose()
+    if (reflector.material) reflector.material.dispose()
+    const rt = reflector.getRenderTarget && reflector.getRenderTarget()
+    if (rt) rt.dispose()
+  }
 
   return reflector
 }

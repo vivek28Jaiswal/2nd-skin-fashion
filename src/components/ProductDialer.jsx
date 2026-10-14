@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, memo } from 'react'
 import { PRODUCTS } from '../data/products.js'
 
 const NUM_PRODUCTS = PRODUCTS.length // 5
@@ -10,7 +10,7 @@ const ITEM_WIDTH = 68 // Spacing between product images
 const TICK_INTERVAL = 8.5
 const NUM_TICKS = 57 // Symmetric ticks from -28 to +28 (center is at index 28)
 
-export default function ProductDialer({ onSelectProduct, activeIndex: externalIndex, onHoverProduct }) {
+function ProductDialer({ onSelectProduct, activeIndex: externalIndex, onHoverProduct }) {
   // Continuous unbounded virtual position for seamless infinite loop (starts at 2 = Orange Tee)
   const [virtualPos, setVirtualPos] = useState(externalIndex !== undefined ? externalIndex : 2)
   const [dragOffset, setDragOffset] = useState(0)
@@ -201,6 +201,7 @@ export default function ProductDialer({ onSelectProduct, activeIndex: externalIn
                   src={prod.img}
                   alt={prod.name}
                   draggable={false}
+                  decoding="async"
                   className="w-full h-full object-contain pointer-events-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]"
                 />
               </div>
@@ -264,3 +265,5 @@ export default function ProductDialer({ onSelectProduct, activeIndex: externalIn
     </div>
   )
 }
+
+export default memo(ProductDialer)

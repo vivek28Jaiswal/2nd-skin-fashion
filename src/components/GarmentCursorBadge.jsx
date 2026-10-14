@@ -1,7 +1,7 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, memo } from 'react'
 import gsap from 'gsap'
 
-export default function GarmentCursorBadge({ hoveredName }) {
+function GarmentCursorBadge({ hoveredName }) {
   const badgeWrapperRef = useRef(null)
   const cardInnerRef = useRef(null)
   const mousePosRef = useRef({ x: -9999, y: -9999 })
@@ -67,3 +67,5 @@ export default function GarmentCursorBadge({ hoveredName }) {
     </div>
   )
 }
+
+export default memo(GarmentCursorBadge)

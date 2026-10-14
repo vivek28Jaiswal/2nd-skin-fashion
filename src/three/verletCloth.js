@@ -146,6 +146,7 @@ export class VerletClothSystem {
     this.displacementTexture.wrapT = THREE.ClampToEdgeWrapping
     this.displacementTexture.needsUpdate = true
 
+    this.isResting = false
     this.generateFabric()
   }
 
@@ -234,6 +235,15 @@ export class VerletClothSystem {
   }
 
   update(dt, { carouselVelY = 0, carouselAccY = 0, mouseHit = null, mouseDelta = null, isRackMoving = false }) {
+    // If stationary and settled, sleep the cloth simulation and avoid redundant GPU texture updates
+    if (!isRackMoving && !mouseHit && Math.abs(carouselVelY) < 0.0001 && Math.abs(carouselAccY) < 0.0001) {
+      if (this.isResting) {
+        return
+      }
+    } else {
+      this.isResting = false
+    }
+
     // Tangential inertial force along local Z axis caused by rack rotation
     const rackInertiaZ = -(carouselAccY * 2.2 + carouselVelY * 5.5)
 
@@ -315,6 +325,14 @@ export class VerletClothSystem {
           p.lastZ = p.origZ
         }
       }
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 0
+        data[i + 1] = 0
+        data[i + 2] = 0
+        data[i + 3] = 1.0
+      }
+      this.displacementTexture.needsUpdate = true
+      this.isResting = true
     }
   }
 

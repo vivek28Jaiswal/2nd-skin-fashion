@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -8,7 +8,12 @@ import { applyClothShader } from '../three/clothShader.js'
 import { VerletClothSystem } from '../three/verletCloth.js'
 import { createFloorReflector } from '../three/floorReflector.js'
 
-export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false, spinTrigger = 0, onModelReady }) {
+// Reusable Three.js math instances to prevent per-frame GC allocations
+const _qSwing = new THREE.Quaternion()
+const _qFlare = new THREE.Quaternion()
+const _tempVec3 = new THREE.Vector3()
+
+function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false, spinTrigger = 0, onModelReady }) {
   const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const targetAngleRef = useRef(null)
@@ -791,9 +796,9 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
           if (!g || !g.group || !g.baseQuaternion) continue
 
           if (Math.abs(g.angle) > 0.0001 || Math.abs(g.radialTilt) > 0.0001) {
-            const qSwing = new THREE.Quaternion().setFromAxisAngle(g.radialDir, g.angle)
-            const qFlare = new THREE.Quaternion().setFromAxisAngle(g.tangentDir, g.radialTilt)
-            g.group.quaternion.copy(qSwing).multiply(qFlare).multiply(g.baseQuaternion)
+            _qSwing.setFromAxisAngle(g.radialDir, g.angle)
+            _qFlare.setFromAxisAngle(g.tangentDir, g.radialTilt)
+            g.group.quaternion.copy(_qSwing).multiply(_qFlare).multiply(g.baseQuaternion)
           } else {
             g.group.quaternion.copy(g.baseQuaternion)
           }
@@ -828,7 +833,7 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
                 mouseDelta = activeMouseDelta
               } else if (activeHitWorldPoint) {
                 // Convert world hit point into clothMesh local coordinates
-                mouseHit = clothMesh.worldToLocal(activeHitWorldPoint.clone())
+                mouseHit = clothMesh.worldToLocal(_tempVec3.copy(activeHitWorldPoint))
                 mouseDelta = activeMouseDelta
               }
             }
@@ -869,6 +874,8 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
         if (floorReflector.geometry) floorReflector.geometry.dispose()
         if (typeof floorReflector.dispose === 'function') floorReflector.dispose()
       }
+      pmremGenerator.dispose()
+      if (envTexture) envTexture.dispose()
       renderer.dispose()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
@@ -894,3 +901,5 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
     </div>
   )
 }
+
+export default memo(ModelViewer)

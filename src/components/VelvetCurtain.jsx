@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, memo } from 'react'
 import * as THREE from 'three'
 import gsap from 'gsap'
 
@@ -158,7 +158,7 @@ void main() {
 }
 `
 
-export default function VelvetCurtain({
+function VelvetCurtain({
   color = '#ff4d1c',
   isActive = false,
   onCovered,
@@ -169,6 +169,8 @@ export default function VelvetCurtain({
   const hasTriggeredRef = useRef(false)
   const onCoveredRef = useRef(onCovered)
   const onCompleteRef = useRef(onComplete)
+  const startRenderRef = useRef(null)
+  const stopRenderRef = useRef(null)
 
   useEffect(() => {
     onCoveredRef.current = onCovered
@@ -185,8 +187,8 @@ export default function VelvetCurtain({
     const scene = new THREE.Scene()
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'high-performance' })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     renderer.setSize(width, height)
     renderer.domElement.style.width = '100%'
     renderer.domElement.style.height = '100%'
@@ -214,26 +216,52 @@ export default function VelvetCurtain({
     const mesh = new THREE.Mesh(geometry, material)
     scene.add(mesh)
 
-    let animId
+    // Pre-warm shader pipeline once to prevent first-frame hitches
+    renderer.render(scene, camera)
+
+    let animId = null
+    let isRunning = false
     const startTime = performance.now()
-    const renderLoop = () => {
-      animId = requestAnimationFrame(renderLoop)
-      material.uniforms.uTime.value = (performance.now() - startTime) / 1000
-      renderer.render(scene, camera)
+
+    const startRender = () => {
+      if (isRunning) return
+      isRunning = true
+      const loop = () => {
+        if (!isRunning) return
+        animId = requestAnimationFrame(loop)
+        material.uniforms.uTime.value = (performance.now() - startTime) / 1000
+        renderer.render(scene, camera)
+      }
+      loop()
     }
-    renderLoop()
+
+    const stopRender = () => {
+      isRunning = false
+      if (animId) {
+        cancelAnimationFrame(animId)
+        animId = null
+      }
+    }
+
+    startRenderRef.current = startRender
+    stopRenderRef.current = stopRender
 
     const handleResize = () => {
       const w = window.innerWidth
       const h = window.innerHeight
       renderer.setSize(w, h)
       material.uniforms.uResolution.value.set(w, h)
+      if (!isRunning) {
+        renderer.render(scene, camera)
+      }
     }
     window.addEventListener('resize', handleResize)
 
     return () => {
       window.removeEventListener('resize', handleResize)
-      cancelAnimationFrame(animId)
+      stopRender()
+      startRenderRef.current = null
+      stopRenderRef.current = null
       geometry.dispose()
       material.dispose()
       renderer.dispose()
@@ -248,6 +276,7 @@ export default function VelvetCurtain({
     if (!isActive || hasTriggeredRef.current || !materialRef.current) return
     hasTriggeredRef.current = true
 
+    startRenderRef.current?.()
     const material = materialRef.current
 
     // Step 1: Draw the curtain in from the right across the screen
@@ -267,6 +296,7 @@ export default function VelvetCurtain({
           delay: 0.08,
           ease: 'power2.inOut',
           onComplete: () => {
+            stopRenderRef.current?.()
             onCompleteRef.current?.()
           },
         })
@@ -282,3 +312,5 @@ export default function VelvetCurtain({
     />
   )
 }
+
+export default memo(VelvetCurtain)

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Navbar from './components/Navbar.jsx'
 import ModelViewer from './components/ModelViewer.jsx'
 import ProductDialer from './components/ProductDialer.jsx'
@@ -18,13 +18,13 @@ export default function App() {
   const [spinTrigger, setSpinTrigger] = useState(0)
 
   // Triggered when customer clicks "PRODUCTS" in the top navbar
-  const handleProductsClick = () => {
+  const handleProductsClick = useCallback(() => {
     setSpinTrigger((prev) => prev + 1)
     setIsPanelOpen(false)
-  }
+  }, [])
 
   // Triggered when customer clicks any garment directly on the 3D rack
-  const handleSelectGarmentFromRack = (garmentName) => {
+  const handleSelectGarmentFromRack = useCallback((garmentName) => {
     if (!garmentName) return
     const nameLower = garmentName.toLowerCase().trim()
     let found = PRODUCTS.find(
@@ -47,10 +47,10 @@ export default function App() {
       }
       setIsPanelOpen(true)
     }
-  }
+  }, [])
 
   // Triggered when customer clicks or scrolls the bottom product ruler dialer
-  const handleSelectProductFromDialer = (index, product) => {
+  const handleSelectProductFromDialer = useCallback((index, product) => {
     setActiveIndex(index)
     if (product) {
       setSelectedProduct(product)
@@ -59,15 +59,23 @@ export default function App() {
       }
       setIsPanelOpen(true)
     }
-  }
+  }, [])
 
-  const handleClosePanel = () => {
+  const handleClosePanel = useCallback(() => {
     setIsPanelOpen(false)
-  }
+  }, [])
 
-  const handleTogglePanel = () => {
+  const handleTogglePanel = useCallback(() => {
     setIsPanelOpen((prev) => !prev)
-  }
+  }, [])
+
+  const handleModelReady = useCallback(() => {
+    setIsModelReady(true)
+  }, [])
+
+  const handlePreloaderComplete = useCallback(() => {
+    setIsPreloaderDone(true)
+  }, [])
 
   return (
     <div className="relative h-screen w-screen bg-black text-white overflow-hidden select-none flex">
@@ -75,7 +83,7 @@ export default function App() {
       {!isPreloaderDone && (
         <Preloader
           isModelReady={isModelReady}
-          onPreloaderComplete={() => setIsPreloaderDone(true)}
+          onPreloaderComplete={handlePreloaderComplete}
         />
       )}
 
@@ -97,7 +105,7 @@ export default function App() {
             onSelectGarment={handleSelectGarmentFromRack}
             isPanelOpen={isPanelOpen}
             spinTrigger={spinTrigger}
-            onModelReady={() => setIsModelReady(true)}
+            onModelReady={handleModelReady}
           />
         </main>
 

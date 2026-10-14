@@ -1,4 +1,6 @@
-export default function Navbar({ onProductsClick }) {
+import { memo } from 'react'
+
+function Navbar({ onProductsClick }) {
   return (
     <header className="absolute top-0 left-0 right-0 z-40 px-8 sm:px-12 pt-7">
       <nav className="flex items-center gap-14 sm:gap-20 md:gap-24 text-[12px] sm:text-[13px] tracking-wider font-medium uppercase text-white">
@@ -25,3 +27,5 @@ export default function Navbar({ onProductsClick }) {
     </header>
   )
 }
+
+export default memo(Navbar)

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { X, Heart, Ruler, Minus, Plus } from '@phosphor-icons/react'
 import OfferMarquee from './OfferMarquee.jsx'
 import ScrambleText from './ScrambleText.jsx'
 
-export default function ProductSidepanel({
+function ProductSidepanel({
   isOpen,
   product,
   onClose,
@@ -81,6 +81,7 @@ export default function ProductSidepanel({
               <img
                 src={thumbnails[activeThumb] || product.img}
                 alt={product.title}
+                decoding="async"
                 className="max-h-[86%] max-w-[76%] object-contain drop-shadow-sm transition-all duration-300"
               />
             </div>
@@ -101,6 +102,7 @@ export default function ProductSidepanel({
                   <img
                     src={thumb}
                     alt={`Angle ${idx + 1}`}
+                    decoding="async"
                     className="w-full h-full object-contain p-0.5"
                   />
                 </button>
@@ -236,3 +238,5 @@ export default function ProductSidepanel({
     </>
   )
 }
+
+export default memo(ProductSidepanel)
