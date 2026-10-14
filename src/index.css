@@ -40,3 +40,9 @@ body,
   writing-mode: vertical-rl;
   text-orientation: mixed;
 }
+
+.dialer-transition {
+  transition: left 500ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: left;
+}
+

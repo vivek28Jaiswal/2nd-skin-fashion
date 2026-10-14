@@ -116,13 +116,7 @@ export default function App() {
       <Navbar onProductsClick={handleProductsClick} />
 
       {/* Main 3D Rack & Interactive Scene Area */}
-      <div
-        className={`relative h-full flex flex-col items-center justify-center transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden ${
-          isPanelOpen
-            ? 'w-full lg:w-1/2'
-            : 'w-full'
-        }`}
-      >
+      <div className="relative h-full w-full flex flex-col items-center justify-center overflow-hidden">
         <main className="relative w-full h-full flex items-center justify-center overflow-hidden">
           <ModelViewer
             targetAngle={targetAngle}
@@ -136,7 +130,11 @@ export default function App() {
         </main>
 
         {/* Bottom Center: Interactive Product Ruler Dialer with iOS safe-area support */}
-        <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-7 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-auto">
+        <div
+          className={`absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-7 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-auto dialer-transition ${
+            isPanelOpen ? 'left-1/2 lg:left-1/4' : 'left-1/2'
+          }`}
+        >
           <ProductDialer
             activeIndex={activeIndex}
             onSelectProduct={handleSelectProductFromDialer}

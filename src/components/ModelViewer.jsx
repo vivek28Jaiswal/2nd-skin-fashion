@@ -32,6 +32,7 @@ function ModelViewer({
   const isInteractiveRef = useRef(isInteractive)
   const syncBufferSizeRef = useRef(null)
   const spinRackRef = useRef(null)
+  const rackTransitionRef = useRef(null)
 
   useEffect(() => {
     isInteractiveRef.current = isInteractive
@@ -49,12 +50,9 @@ function ModelViewer({
 
   useEffect(() => {
     isPanelOpenRef.current = isPanelOpen
-    const timer = setTimeout(() => {
-      if (syncBufferSizeRef.current) {
-        syncBufferSizeRef.current()
-      }
-    }, 520)
-    return () => clearTimeout(timer)
+    if (rackTransitionRef.current) {
+      rackTransitionRef.current(isPanelOpen)
+    }
   }, [isPanelOpen])
 
   useEffect(() => {
@@ -180,17 +178,33 @@ function ModelViewer({
     let totalModelHeight = 0
 
     const getResponsiveScale = (w) => {
-      if (w < 480) return 0.35
-      if (w < 640) return 0.40
-      if (w < 768) return 0.48
-      if (w < 1024) return 0.58
-      return 0.70
+      if (w <= 390) return 0.35
+      if (w >= 1400) return 0.70
+      // Continuous smooth S-curve between 390px (mobile) and 1400px (desktop)
+      const t = (w - 390) / (1400 - 390)
+      const smoothT = t * t * (3 - 2 * t)
+      return 0.35 + smoothT * (0.70 - 0.35)
     }
 
     const getResponsiveY = (w, height) => {
       if (w < 640) return -height * 0.07
       return -height * 0.15
     }
+
+    const rackPanelTransition = {
+      progress: isPanelOpenRef.current && (typeof window !== 'undefined' && window.innerWidth >= 1024) ? 1 : 0,
+    }
+
+    const updateRackTransition = (open) => {
+      const isDesktop = (container?.clientWidth || window.innerWidth) >= 1024
+      gsap.to(rackPanelTransition, {
+        progress: open && isDesktop ? 1 : 0,
+        duration: 0.55,
+        ease: 'power3.out',
+        overwrite: 'auto',
+      })
+    }
+    rackTransitionRef.current = updateRackTransition
 
     const carouselGroup = new THREE.Group()
     carouselGroup.name = 'rotating_carousel'
@@ -306,8 +320,13 @@ function ModelViewer({
         // Scale and initial angle (responsive rack scale)
         totalModelHeight = size.y
         const curW = container.clientWidth || window.innerWidth
-        const scale = getResponsiveScale(curW)
-        group.scale.set(scale, scale, scale)
+        const isDesktop = curW >= 1024
+        const baseScale = getResponsiveScale(curW)
+        const openScale = isDesktop ? 0.49 : baseScale
+        const initialProgress = isPanelOpenRef.current && isDesktop ? 1 : 0
+        rackPanelTransition.progress = initialProgress
+        const initialScale = THREE.MathUtils.lerp(baseScale, openScale, initialProgress)
+        group.scale.set(initialScale, initialScale, initialScale)
         group.rotation.y = -Math.PI * 0.25 // -45 degrees
         group.position.y = getResponsiveY(curW, totalModelHeight)
         scene.add(group)
@@ -766,17 +785,6 @@ function ModelViewer({
       const height = container.clientHeight
       if (width === 0 || height === 0) return
 
-      if (mainRackGroup && totalModelHeight > 0) {
-        const targetScale = getResponsiveScale(width)
-        mainRackGroup.scale.set(targetScale, targetScale, targetScale)
-        mainRackGroup.position.y = getResponsiveY(width, totalModelHeight)
-        mainRackGroup.updateMatrixWorld(true)
-        if (floorReflector) {
-          const groupBox = new THREE.Box3().setFromObject(mainRackGroup)
-          floorReflector.position.y = groupBox.min.y - 0.02
-        }
-      }
-
       camera.aspect = width / height
       camera.updateProjectionMatrix()
       renderer.setSize(width, height, false)
@@ -790,14 +798,12 @@ function ModelViewer({
       const height = container.clientHeight
       if (width === 0 || height === 0) return
 
-      if (mainRackGroup && totalModelHeight > 0) {
-        const targetScale = getResponsiveScale(width)
-        mainRackGroup.scale.set(targetScale, targetScale, targetScale)
-        mainRackGroup.position.y = getResponsiveY(width, totalModelHeight)
-        mainRackGroup.updateMatrixWorld(true)
-        if (floorReflector) {
-          const groupBox = new THREE.Box3().setFromObject(mainRackGroup)
-          floorReflector.position.y = groupBox.min.y - 0.02
+      const isDesktop = width >= 1024
+      if (isPanelOpenRef.current) {
+        if (!isDesktop && rackPanelTransition.progress > 0) {
+          gsap.to(rackPanelTransition, { progress: 0, duration: 0.25, overwrite: 'auto' })
+        } else if (isDesktop && rackPanelTransition.progress < 1) {
+          gsap.to(rackPanelTransition, { progress: 1, duration: 0.25, overwrite: 'auto' })
         }
       }
 
@@ -805,7 +811,7 @@ function ModelViewer({
       camera.aspect = width / height
       camera.updateProjectionMatrix()
 
-      // Debounce the heavy buffer reallocation until width transition settles
+      // Debounce the heavy buffer reallocation until window resize settles
       if (resizeTimer) clearTimeout(resizeTimer)
       resizeTimer = setTimeout(syncBufferSize, 150)
     }
@@ -820,7 +826,7 @@ function ModelViewer({
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate)
 
-      // Continuous 60fps aspect ratio sync during smooth width transitions (zero buffer clearing)
+      // Continuous 60fps aspect ratio sync (zero buffer clearing)
       const curW = container.clientWidth
       const curH = container.clientHeight
       if (curW > 0 && curH > 0) {
@@ -831,9 +837,49 @@ function ModelViewer({
         }
       }
 
-      // Smooth camera dolly zoom between full-screen and half-screen split
-      const targetCamZ = isPanelOpenRef.current ? 268.0 : 247.46
-      camera.position.z += (targetCamZ - camera.position.z) * 0.08
+      // Keep camera Z steady and cinematic (247.46)
+      const targetCamZ = 247.46
+      if (Math.abs(camera.position.z - targetCamZ) > 0.01) {
+        camera.position.z += (targetCamZ - camera.position.z) * 0.08
+      }
+
+      // Silky-smooth 60fps rack position and scaling transition for desktop side panel
+      if (mainRackGroup && totalModelHeight > 0 && curW > 0 && curH > 0) {
+        const isDesktop = curW >= 1024
+        const baseScale = getResponsiveScale(curW)
+        const baseY = getResponsiveY(curW, totalModelHeight)
+        const openScale = isDesktop ? 0.49 : baseScale
+        const openY = baseY
+
+        const p = rackPanelTransition.progress
+        const currentScale = THREE.MathUtils.lerp(baseScale, openScale, p)
+        const currentY = THREE.MathUtils.lerp(baseY, openY, p)
+
+        // Keep rack perfectly centered along optical axis in 3D space: zero off-axis slant or tilt
+        mainRackGroup.position.x = 0
+        mainRackGroup.position.y = currentY
+        mainRackGroup.scale.set(currentScale, currentScale, currentScale)
+        mainRackGroup.updateMatrixWorld(true)
+
+        if (floorReflector) {
+          const groupBox = new THREE.Box3().setFromObject(mainRackGroup)
+          floorReflector.position.x = 0
+          floorReflector.position.y = groupBox.min.y - 0.02
+          if (floorReflector.material?.uniforms?.uRackCenter?.value) {
+            floorReflector.material.uniforms.uRackCenter.value.x = 0
+          }
+        }
+
+        // Camera lens-shift view offset:
+        // Shifts the viewport horizontally to the left 50% without ANY perspective angle or tilt.
+        // The rack remains 100% straight ("sidha"), level, and head-on during open and close.
+        const targetViewOffsetX = isDesktop ? p * (curW * 0.25) : 0
+        if (targetViewOffsetX > 0.01) {
+          camera.setViewOffset(curW, curH, targetViewOffsetX, 0, curW, curH)
+        } else if (camera.view && camera.view.enabled) {
+          camera.clearViewOffset()
+        }
+      }
 
       const currentTime = performance.now()
       const dt = Math.min((currentTime - lastTime) / 1000, 0.04)
@@ -1048,6 +1094,7 @@ function ModelViewer({
       if (resizeTimer) clearTimeout(resizeTimer)
       syncBufferSizeRef.current = null
       spinRackRef.current = null
+      rackTransitionRef.current = null
       container.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
