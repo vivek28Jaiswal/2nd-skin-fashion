@@ -554,7 +554,7 @@ const createHighResJeansTexture = ({
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
   ctx.font = 'bold 24px sans-serif'
-  ctx.fillText('WTF DENIM CO.', 1700, 86)
+  ctx.fillText('2ND SKIN DENIM CO.', 1700, 86)
   ctx.font = '14px sans-serif'
   ctx.fillText('LOT 001 · BAGGY FIT · 14.5 OZ', 1680, 112)
   ctx.restore()
