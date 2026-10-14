@@ -8,15 +8,20 @@ import { applyClothShader } from '../three/clothShader.js'
 import { VerletClothSystem } from '../three/verletCloth.js'
 import { createFloorReflector } from '../three/floorReflector.js'
 
-export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false, spinTrigger = 0 }) {
+export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false, spinTrigger = 0, onModelReady }) {
   const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const targetAngleRef = useRef(null)
   const onHoverGarmentRef = useRef(onHoverGarment)
   const onSelectGarmentRef = useRef(onSelectGarment)
+  const onModelReadyRef = useRef(onModelReady)
   const isPanelOpenRef = useRef(isPanelOpen)
   const syncBufferSizeRef = useRef(null)
   const spinRackRef = useRef(null)
+
+  useEffect(() => {
+    onModelReadyRef.current = onModelReady
+  }, [onModelReady])
 
   useEffect(() => {
     if (spinTrigger > 0 && spinRackRef.current) {
@@ -227,17 +232,14 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
               if (child.parent) child.parent.userData.garmentName = label
             } else if (isJeans) {
               child.material = getJeansMaterial(name, parentName).clone()
-              const id = `${name} ${parentName}`.toLowerCase()
-              let label = 'vintage wide-leg baggy denim'
-              if (id.includes('020') || id.includes('023') || id.includes('026')) {
-                label = 'vintage wide-leg baggy denim'
-              } else if (id.includes('021') || id.includes('024') || id.includes('027')) {
-                label = 'medium indigo stone-wash denim'
-              } else {
-                label = 'washed charcoal black denim'
-              }
+              const label = 'vintage wide-leg baggy denim'
               child.userData.garmentName = label
-              if (child.parent) child.parent.userData.garmentName = label
+              if (child.parent) {
+                child.parent.userData.garmentName = label
+                if (child.parent.parent) {
+                  child.parent.parent.userData.garmentName = label
+                }
+              }
             } else {
               child.material = child.material.clone()
               child.material.metalness = 0.0
@@ -401,11 +403,13 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
         prevCarouselRotY = carouselGroup.rotation.y
         lastTime = performance.now()
         setLoading(false)
+        onModelReadyRef.current?.()
       },
       undefined,
       (error) => {
         console.error('Error loading 3D model:', error)
         setLoading(false)
+        onModelReadyRef.current?.()
       }
     )
 
@@ -472,12 +476,21 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
         activeHitGarment = null
         activeHitWorldPoint = null
 
+        const resolveGarmentName = (obj) => {
+          let curr = obj
+          while (curr) {
+            if (curr.userData?.garmentName) return curr.userData.garmentName
+            curr = curr.parent
+          }
+          return null
+        }
+
         if (hits.length > 0) {
-          for (let h = 0; h < Math.min(3, hits.length); h++) {
+          for (let h = 0; h < Math.min(6, hits.length); h++) {
             const hit = hits[h]
-            if (hit.point.z > -10) {
+            if (hit.point.z > -15) {
               const obj = hit.object
-              const name = obj.userData?.garmentName || obj.parent?.userData?.garmentName
+              const name = resolveGarmentName(obj)
               if (name) {
                 foundGarment = name
                 activeHitGarment = obj
@@ -522,10 +535,14 @@ export default function ModelViewer({ targetAngle, onHoverGarment, onSelectGarme
         raycaster.setFromCamera(mouse, camera)
         const hits = raycaster.intersectObjects(interactiveObjects, true)
         if (hits.length > 0) {
-          for (let h = 0; h < Math.min(3, hits.length); h++) {
+          for (let h = 0; h < Math.min(6, hits.length); h++) {
             const hit = hits[h]
-            const obj = hit.object
-            const name = obj.userData?.garmentName || obj.parent?.userData?.garmentName
+            let curr = hit.object
+            let name = null
+            while (curr && !name) {
+              name = curr.userData?.garmentName
+              curr = curr.parent
+            }
             if (name) {
               onSelectGarmentRef.current(name)
               break

@@ -4,9 +4,12 @@ import ModelViewer from './components/ModelViewer.jsx'
 import ProductDialer from './components/ProductDialer.jsx'
 import GarmentCursorBadge from './components/GarmentCursorBadge.jsx'
 import ProductSidepanel from './components/ProductSidepanel.jsx'
+import Preloader from './components/Preloader.jsx'
 import { PRODUCTS } from './data/products.js'
 
 export default function App() {
+  const [isPreloaderDone, setIsPreloaderDone] = useState(false)
+  const [isModelReady, setIsModelReady] = useState(false)
   const [targetAngle, setTargetAngle] = useState(null)
   const [activeIndex, setActiveIndex] = useState(2) // Default center: Orange Stüssy Tee
   const [hoveredName, setHoveredName] = useState(null)
@@ -23,9 +26,18 @@ export default function App() {
   // Triggered when customer clicks any garment directly on the 3D rack
   const handleSelectGarmentFromRack = (garmentName) => {
     if (!garmentName) return
-    const found = PRODUCTS.find(
-      (p) => p.name.toLowerCase() === garmentName.toLowerCase()
+    const nameLower = garmentName.toLowerCase().trim()
+    let found = PRODUCTS.find(
+      (p) => p.name.toLowerCase() === nameLower
     )
+    // Fallback: match any denim / jeans / pants variant
+    if (!found && (nameLower.includes('denim') || nameLower.includes('jean') || nameLower.includes('pant') || nameLower.includes('baggy'))) {
+      found = PRODUCTS.find((p) => p.id === 'pants-jeans' || p.name.toLowerCase().includes('denim'))
+    }
+    // Fallback: match any tee / shirt
+    if (!found && (nameLower.includes('tee') || nameLower.includes('shirt'))) {
+      found = PRODUCTS.find((p) => p.id === 'center-tshirt')
+    }
     if (found) {
       const idx = PRODUCTS.indexOf(found)
       setActiveIndex(idx)
@@ -59,6 +71,14 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-screen bg-black text-white overflow-hidden select-none flex">
+      {/* Interactive Velvet Preloader */}
+      {!isPreloaderDone && (
+        <Preloader
+          isModelReady={isModelReady}
+          onPreloaderComplete={() => setIsPreloaderDone(true)}
+        />
+      )}
+
       {/* Top Header Navigation */}
       <Navbar onProductsClick={handleProductsClick} />
 
@@ -77,6 +97,7 @@ export default function App() {
             onSelectGarment={handleSelectGarmentFromRack}
             isPanelOpen={isPanelOpen}
             spinTrigger={spinTrigger}
+            onModelReady={() => setIsModelReady(true)}
           />
         </main>
 
