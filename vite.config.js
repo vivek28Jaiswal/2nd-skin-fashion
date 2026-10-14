@@ -11,9 +11,15 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          three: ['three'],
-          gsap: ['gsap'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('/three/') || id.includes('\\three\\')) {
+              return 'three'
+            }
+            if (id.includes('/gsap/') || id.includes('\\gsap\\') || id.includes('/@gsap/') || id.includes('\\@gsap\\')) {
+              return 'gsap'
+            }
+          }
         },
       },
     },
