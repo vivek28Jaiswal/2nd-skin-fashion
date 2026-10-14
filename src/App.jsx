@@ -87,7 +87,23 @@ export default function App() {
   }, [])
 
   return (
-    <div className="relative h-screen w-screen bg-black text-white overflow-hidden select-none flex">
+    <div className="relative h-full h-[100dvh] w-full w-screen bg-black text-white overflow-hidden select-none flex">
+      {/* Full Interaction Blocker while Preloader / Velvet Curtain is active */}
+      {!isPreloaderDone && (
+        <div
+          className="fixed inset-0 z-[70] cursor-wait select-none"
+          style={{ touchAction: 'none' }}
+          onPointerDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
+        />
+      )}
+
       {/* Interactive Velvet Preloader */}
       {!isPreloaderDone && (
         <Preloader
@@ -115,11 +131,12 @@ export default function App() {
             isPanelOpen={isPanelOpen}
             spinTrigger={spinTrigger}
             onModelReady={handleModelReady}
+            isInteractive={isPreloaderDone}
           />
         </main>
 
-        {/* Bottom Center: Interactive Product Ruler Dialer */}
-        <div className="absolute bottom-5 sm:bottom-7 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-auto">
+        {/* Bottom Center: Interactive Product Ruler Dialer with iOS safe-area support */}
+        <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-7 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-auto">
           <ProductDialer
             activeIndex={activeIndex}
             onSelectProduct={handleSelectProductFromDialer}

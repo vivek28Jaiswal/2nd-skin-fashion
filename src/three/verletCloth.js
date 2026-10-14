@@ -140,8 +140,8 @@ export class VerletClothSystem {
       THREE.RGBAFormat,
       THREE.FloatType
     )
-    this.displacementTexture.minFilter = THREE.LinearFilter
-    this.displacementTexture.magFilter = THREE.LinearFilter
+    this.displacementTexture.minFilter = THREE.NearestFilter
+    this.displacementTexture.magFilter = THREE.NearestFilter
     this.displacementTexture.wrapS = THREE.ClampToEdgeWrapping
     this.displacementTexture.wrapT = THREE.ClampToEdgeWrapping
     this.displacementTexture.needsUpdate = true

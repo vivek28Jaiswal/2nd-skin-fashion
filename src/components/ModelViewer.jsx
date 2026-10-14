@@ -13,7 +13,15 @@ const _qSwing = new THREE.Quaternion()
 const _qFlare = new THREE.Quaternion()
 const _tempVec3 = new THREE.Vector3()
 
-function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen = false, spinTrigger = 0, onModelReady }) {
+function ModelViewer({
+  targetAngle,
+  onHoverGarment,
+  onSelectGarment,
+  isPanelOpen = false,
+  spinTrigger = 0,
+  onModelReady,
+  isInteractive = true,
+}) {
   const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const targetAngleRef = useRef(null)
@@ -21,8 +29,13 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
   const onSelectGarmentRef = useRef(onSelectGarment)
   const onModelReadyRef = useRef(onModelReady)
   const isPanelOpenRef = useRef(isPanelOpen)
+  const isInteractiveRef = useRef(isInteractive)
   const syncBufferSizeRef = useRef(null)
   const spinRackRef = useRef(null)
+
+  useEffect(() => {
+    isInteractiveRef.current = isInteractive
+  }, [isInteractive])
 
   useEffect(() => {
     onModelReadyRef.current = onModelReady
@@ -213,9 +226,6 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
           if (child.isMesh) {
             child.castShadow = true
             child.receiveShadow = true
-
-            const name = (child.name || '').toLowerCase()
-            const parentName = (child.parent?.name || '').toLowerCase()
             const isRack =
               name.startsWith('line') ||
               name.startsWith('circle') ||
@@ -235,10 +245,13 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
 
             if (isRack) {
               child.material = rackSilverMaterial
+              child.userData.isRack = true
             } else if (isHanger) {
               child.material = hangerSilverMaterial
+              child.userData.isHanger = true
             } else if (isShirt) {
               child.material = getTeeMaterial(name, parentName).clone()
+              child.userData.isCloth = true
               const id = `${name} ${parentName}`.toLowerCase()
               let label = 'lucky boxy-fit t-shirt'
               if (id.includes('052') || id.includes('048') || id.includes('044')) {
@@ -254,6 +267,7 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
               if (child.parent) child.parent.userData.garmentName = label
             } else if (isJeans) {
               child.material = getJeansMaterial(name, parentName).clone()
+              child.userData.isCloth = true
               const label = 'vintage wide-leg baggy denim'
               child.userData.garmentName = label
               if (child.parent) {
@@ -465,10 +479,22 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
       }
     )
 
+    // Helper to identify if an object or its parent is part of the metal rack frame
+    const isRackObject = (obj) => {
+      let curr = obj
+      while (curr && curr !== carouselGroup && curr !== scene) {
+        if (curr.userData?.isRack) return true
+        const n = (curr.name || '').toLowerCase()
+        if (n.startsWith('line') || n.startsWith('circle')) return true
+        curr = curr.parent
+      }
+      return false
+    }
+
     // Pointer & Click Interaction Handlers
     const resolveGarmentName = (obj) => {
       let curr = obj
-      while (curr) {
+      while (curr && curr !== carouselGroup && curr !== scene) {
         if (curr.userData?.garmentName) return curr.userData.garmentName
         curr = curr.parent
       }
@@ -483,51 +509,31 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
       mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1
     }
 
-    // High-accuracy garment resolver: checks direct raycast hit, with proximity NDC screen fallback
-    const _tempGarmentPos = new THREE.Vector3()
+    // Precise garment raycasting: ONLY matches genuine clothes/garments facing the user.
+    // Never matches the rack frame (metal ring, spokes, stand), floor, or empty space.
     const findGarmentAtMouse = () => {
-      // 1. Raycast direct hits
       raycaster.setFromCamera(mouse, camera)
       const hits = raycaster.intersectObjects(interactiveObjects, true)
-      if (hits.length > 0) {
-        // Prioritize hits that are in the front half (z > -30)
-        for (let h = 0; h < Math.min(10, hits.length); h++) {
-          const hit = hits[h]
+      if (!hits || hits.length === 0) return null
+
+      // If the closest surface hit is the rack frame itself (e.g. metal ring or spoke),
+      // the user clicked or interacted with the rack, NOT clothes!
+      if (hits.length > 0 && isRackObject(hits[0].object)) {
+        return null
+      }
+
+      // Check direct raycast hits on front-facing clothes / garment meshes
+      for (let h = 0; h < Math.min(6, hits.length); h++) {
+        const hit = hits[h]
+        if (hit.point.z > -25) {
           const name = resolveGarmentName(hit.object)
-          if (name && hit.point.z > -30) {
+          if (name) {
             return name
           }
         }
-        // If no front hit found, check any hit with garment name
-        for (let h = 0; h < Math.min(10, hits.length); h++) {
-          const name = resolveGarmentName(hits[h].object)
-          if (name) return name
-        }
       }
 
-      // 2. Proximity fallback: If ray hit an empty gap between clothes, the central axis, or thin profile,
-      // find the closest front garment projected to screen/NDC coordinates
-      let closestGarment = null
-      let minDistance = 0.55 // Max NDC threshold (~110px on a 400px wide screen)
-
-      for (let i = 0; i < garmentsPhysicsList.length; i++) {
-        const item = garmentsPhysicsList[i]
-        if (!item.group) continue
-        item.group.getWorldPosition(_tempGarmentPos)
-        // Only consider garments in the front half (facing the camera)
-        if (_tempGarmentPos.z > -25) {
-          _tempGarmentPos.project(camera)
-          const dx = _tempGarmentPos.x - mouse.x
-          const dy = (_tempGarmentPos.y - mouse.y) * 1.25 // scale y slightly
-          const dist = Math.hypot(dx, dy)
-          if (dist < minDistance) {
-            minDistance = dist
-            closestGarment = resolveGarmentName(item.group)
-          }
-        }
-      }
-
-      return closestGarment
+      return null
     }
 
     let pointerStartX = 0
@@ -535,6 +541,8 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
     let pointerStartTime = 0
     let pointerDownGarment = null
     let hasDragged = false
+    let dragOccurred = false
+    let lastDragEndTime = 0
     let lastSelectedTime = 0
 
     const triggerGarmentSelect = (garmentName) => {
@@ -549,6 +557,7 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
     }
 
     const onPointerDown = (e) => {
+      if (!isInteractiveRef.current) return
       try {
         e.target?.setPointerCapture?.(e.pointerId)
       } catch (_) {}
@@ -561,6 +570,7 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
       lastPointerY = clientY
       pointerStartTime = performance.now()
       hasDragged = false
+      dragOccurred = false
 
       updateMouseCoords(e)
       pointerDownGarment = findGarmentAtMouse()
@@ -572,6 +582,7 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
     }
 
     const onPointerMove = (e) => {
+      if (!isInteractiveRef.current) return
       const clientX = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? lastPointerX
       const clientY = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? lastPointerY
       updateMouseCoords(e)
@@ -585,9 +596,11 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
 
         const moveDist = Math.hypot(clientX - pointerStartX, clientY - pointerStartY)
         const isTouch = e.pointerType === 'touch'
-        const dragThreshold = isTouch ? 20 : 10
+        // Immediate drag recognition on laptop/desktop mouse (5px) and touch (12px)
+        const dragThreshold = isTouch ? 12 : 5
         if (moveDist > dragThreshold) {
           hasDragged = true
+          dragOccurred = true
         }
 
         const deltaX = clientX - lastPointerX
@@ -612,7 +625,9 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
         activeHitGarment = null
         activeHitWorldPoint = null
 
-        if (hits.length > 0) {
+        const firstHitIsRack = hits.length > 0 && isRackObject(hits[0].object)
+
+        if (!firstHitIsRack && hits.length > 0) {
           for (let h = 0; h < Math.min(8, hits.length); h++) {
             const hit = hits[h]
             if (hit.point.z > -25) {
@@ -665,23 +680,25 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
       const moveDist = Math.hypot(clientX - pointerStartX, clientY - pointerStartY)
       const duration = performance.now() - pointerStartTime
       const isTouch = e.pointerType === 'touch'
+      const dragThreshold = isTouch ? 12 : 5
 
-      // Generous tap detection: Human finger taps move up to 25px, click durations up to 500ms
-      const isTap = moveDist < (isTouch ? 28 : 14) || (!hasDragged && moveDist < 35 && duration < 600)
+      const wasDrag = hasDragged || dragOccurred || moveDist > dragThreshold || duration > 500
 
-      if (isTap) {
-        let selectedName = pointerDownGarment
-        if (!selectedName) {
-          updateMouseCoords(e)
-          selectedName = findGarmentAtMouse()
-        }
+      if (wasDrag) {
+        lastDragEndTime = performance.now()
+        // Rack was rotated / dragged: DO NOT trigger any garment selection
+      } else {
+        // Genuine stationary click: user clicked without moving
+        updateMouseCoords(e)
+        const garmentAtUp = findGarmentAtMouse()
+        // Only select if user clicked directly on clothes (starts on clothes or ends on clothes)
+        const selectedName = pointerDownGarment || garmentAtUp
         if (selectedName) {
           triggerGarmentSelect(selectedName)
         }
       }
 
       isDragging = false
-      hasDragged = false
       dragMode = null
       prevMouseHit = null
       activeMouseHit = null
@@ -691,12 +708,25 @@ function ModelViewer({ targetAngle, onHoverGarment, onSelectGarment, isPanelOpen
 
       raycaster.setFromCamera(mouse, camera)
       const hits = raycaster.intersectObjects(interactiveObjects, true)
-      container.style.cursor = hits.length > 0 ? 'grab' : 'default'
+      const firstHitIsRack = hits.length > 0 && isRackObject(hits[0].object)
+      const overClothes = !firstHitIsRack && hits.some((h) => h.point.z > -25 && resolveGarmentName(h.object))
+      container.style.cursor = overClothes ? 'pointer' : (hits.length > 0 ? 'grab' : 'default')
     }
 
     const onClick = (e) => {
+      if (!isInteractiveRef.current) return
       const now = performance.now()
-      if (now - lastSelectedTime < 350) return
+      // Block native browser click if a drag/rotate occurred or garment was already selected
+      if (dragOccurred || hasDragged || (now - lastDragEndTime) < 450 || (now - lastSelectedTime) < 450) {
+        dragOccurred = false
+        hasDragged = false
+        try {
+          e.preventDefault?.()
+          e.stopPropagation?.()
+        } catch (_) {}
+        return
+      }
+
       updateMouseCoords(e)
       const selected = findGarmentAtMouse()
       if (selected) {
