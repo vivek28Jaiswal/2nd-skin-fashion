@@ -24,6 +24,7 @@ function getRandomChar(originalChar) {
 export default function ScrambleText({
   text = '',
   trigger = true,
+  triggerOnMount = true,
   hover = true,
   duration = 0.75,
   delay = 0.12,
@@ -101,7 +102,7 @@ export default function ScrambleText({
   useEffect(() => {
     if (!elRef.current) return
 
-    if (trigger) {
+    if (trigger && triggerOnMount) {
       playScramble()
     } else {
       if (tweenRef.current) tweenRef.current.kill()
@@ -111,10 +112,10 @@ export default function ScrambleText({
     return () => {
       if (tweenRef.current) tweenRef.current.kill()
     }
-  }, [trigger, text, playScramble])
+  }, [trigger, triggerOnMount, text, playScramble])
 
   const handleMouseEnter = () => {
-    if (hover && trigger && !tweenRef.current) {
+    if (hover) {
       playScramble()
     }
   }
