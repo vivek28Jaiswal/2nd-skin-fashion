@@ -9,9 +9,9 @@ import VelvetCurtain from './VelvetCurtain.jsx'
 
 const PRELOADER_PRODUCTS = [
   orangeTee,
+  pantsJeans,
   blueTee,
   blackCrew,
-  pantsJeans,
   blackHalfSleeve,
 ]
 
@@ -29,25 +29,26 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
     isModelReadyRef.current = isModelReady
   }, [isModelReady])
 
-  // 1. Continuous image cycling loop - completely independent of percentage.
-  // Stops immediately when 100% is reached.
+  // 1. Continuous, independent garment loop running at 85ms per frame (~12 fps)
+  // Decoupled completely from % progress: cycles through all clothes multiple times
+  // and ONLY stops when 100% is reached.
   useEffect(() => {
     const interval = setInterval(() => {
       if (isStoppedRef.current) return
       setCurrentImgIndex((prev) => (prev + 1) % PRELOADER_PRODUCTS.length)
-    }, 125)
+    }, 85)
 
     return () => clearInterval(interval)
-  }, []) // Empty dependency array ensures smooth, uninterrupted rotation
+  }, [])
 
-  // 2. Smooth percentage count from 0% to 100% synchronized with behind-the-scenes 3D preloading
+  // 2. Smooth percentage count from 0% to 100% over 3.2 seconds
   useEffect(() => {
     const tween = gsap.to(progressRef.current, {
       value: 100,
-      duration: 2.2,
-      ease: 'power2.out',
+      duration: 3.2,
+      ease: 'power1.out',
       onUpdate: () => {
-        // If 3D model is still downloading/compiling on slower devices, pause smoothly at 96%
+        // If 3D model is still downloading on slower connections, pause smoothly near 96%
         if (!isModelReadyRef.current && progressRef.current.value > 96) {
           progressRef.current.value = 96
         }
@@ -57,14 +58,15 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
         const triggerCurtain = () => {
           setPercent(100)
           isStoppedRef.current = true
-          // Immediately activate the pre-warmed Velvet Curtain transition without delay
+          setCurrentImgIndex(0) // Settle on the iconic orange hero tee
+          // Trigger the pre-warmed velvet curtain immediately
           setIsCurtainActive(true)
         }
 
         if (isModelReadyRef.current) {
           triggerCurtain()
         } else {
-          // Poll until 3D homesec is fully ready
+          // Poll until 3D homesec is ready
           const pollTimer = setInterval(() => {
             if (isModelReadyRef.current) {
               clearInterval(pollTimer)
@@ -80,10 +82,10 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
     }
   }, [])
 
-  // Called when the Velvet Curtain has fully swept across and covered the entire screen
+  // Called when the Velvet Curtain has fully swept across and covered the screen
   const handleCurtainCovered = () => {
-    // Unmount the black preloader screen behind the curtain
-    // Leaving the fully preloaded 3D homesec ready to be revealed
+    // Hide black preloader screen behind the curtain
+    // 3D homesec is already preloaded and ready to be revealed
     setIsPreloaderVisible(false)
   }
 
@@ -97,13 +99,21 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
       {/* Preloader Screen Overlay */}
       {isPreloaderVisible && (
         <div className="fixed inset-0 z-50 bg-[#000000] flex items-center justify-center select-none overflow-hidden">
-          {/* Center: Looping Product Garment Image */}
-          <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 pointer-events-none">
-            <img
-              src={PRELOADER_PRODUCTS[currentImgIndex]}
-              alt="Loading garment preview"
-              className="max-w-full max-h-full object-contain drop-shadow-sm select-none will-change-transform"
-            />
+          {/* Center: Looping Product Garment Image (All pre-rendered in DOM for zero-latency cycling) */}
+          <div className="relative flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 pointer-events-none">
+            {PRELOADER_PRODUCTS.map((imgSrc, idx) => (
+              <img
+                key={idx}
+                src={imgSrc}
+                alt={`Garment preview ${idx}`}
+                className={`absolute max-w-full max-h-full object-contain drop-shadow-sm select-none will-change-transform ${
+                  currentImgIndex === idx
+                    ? 'opacity-100 z-10 visible'
+                    : 'opacity-0 z-0 invisible'
+                }`}
+                loading="eager"
+              />
+            ))}
           </div>
 
           {/* Bottom Right: Clean Modern Percentage Counter matching reference image */}
@@ -115,7 +125,7 @@ export default function Preloader({ isModelReady = true, onPreloaderComplete }) 
         </div>
       )}
 
-      {/* Codrops Velvet Curtain Stage Transition (pre-warmed WebGL canvas) */}
+      {/* Codrops Velvet Curtain Stage Transition */}
       <VelvetCurtain
         color="#ff4d1c"
         isActive={isCurtainActive}
